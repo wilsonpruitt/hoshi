@@ -35,7 +35,22 @@
   .meta{display:flex;gap:22px;margin-top:10px;font-size:14px;color:var(--ink)}
   .meta b{font-weight:700}
   .reserve-pip{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:2px}
-  a.small{color:var(--muted);font-size:12px;margin-top:14px;text-decoration:none}
+  a.small{color:var(--muted);font-size:12px;margin-top:14px;text-decoration:underline;cursor:pointer}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;margin-top:10px;
+    font-size:12px;color:var(--muted);max-width:560px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend .ic{width:14px;height:14px;display:inline-block;border-radius:2px}
+  .modal{position:fixed;inset:0;background:rgba(35,32,26,.55);display:none;
+    align-items:center;justify-content:center;padding:18px;z-index:10}
+  .modal.show{display:flex}
+  .modal-card{background:var(--panel);max-width:460px;width:100%;border-radius:12px;
+    padding:20px 24px 26px;box-shadow:0 18px 50px rgba(0,0,0,.35);max-height:88vh;overflow:auto}
+  .modal-card h2{margin:0;font-size:24px;letter-spacing:.1em}
+  .modal-card h3{margin:18px 0 4px;font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+  .modal-card p,.modal-card li{font-size:14px;line-height:1.5}
+  .modal-card ul{margin:4px 0;padding-left:20px}
+  .modal-card .close{float:right;cursor:pointer;color:var(--muted);font-size:24px;
+    line-height:1;border:none;background:none;padding:0;margin:-4px -6px 0 0}
   @media (prefers-reduced-motion:no-preference){
     .zonecell{transition:opacity .12s ease}
   }
@@ -52,6 +67,13 @@
 <div class="meta">
   <span><span class="dot" style="background:var(--blue)"></span>Blue reserve <b id="rb">5</b> &middot; lost <b id="lb">0</b></span>
   <span><span class="dot" style="background:var(--red)"></span>Red reserve <b id="rr">5</b> &middot; lost <b id="lr">0</b></span>
+</div>
+<div class="legend">
+  <span><b style="color:var(--blue);font-size:15px">&#9733;</b> trooper (anchor)</span>
+  <span><b style="color:var(--blue)">&#9679;</b> drone</span>
+  <span><b style="color:var(--blue);opacity:.5;font-size:15px">&#9733;</b> not ready yet</span>
+  <span><span class="ic" style="background:var(--blue);opacity:.22"></span> territory</span>
+  <span><b style="color:#caa24a">&#9711;</b> last move</span>
 </div>
 <div class="controls">
   <button id="mTrooper">Place trooper</button>
@@ -76,7 +98,31 @@
     <option value="fog">Fog — 5 scattered</option>
   </select>
 </div>
-<a class="small" href="#" id="rulesLink">how to play</a>
+<a class="small" id="rulesLink">how to play</a>
+
+<div class="modal" id="rules">
+  <div class="modal-card">
+    <button class="close" id="rulesClose" aria-label="close">&times;</button>
+    <h2>HOSHI</h2>
+    <p>Drop paratroopers, deploy drones, and take ground. <b>Win</b> by capturing
+       <b>3</b> enemy troopers, or by holding more territory when the game ends.</p>
+    <h3>Your turn — one action</h3>
+    <ul>
+      <li><b>Place a trooper</b> (the star) on any empty point — your anchor.</li>
+      <li><b>Deploy a drone</b> on a lit point within range of a <b>ready</b> trooper.</li>
+      <li><b>End &amp; score</b> — finish the game and count territory.</li>
+    </ul>
+    <h3>Key rules</h3>
+    <ul>
+      <li>A trooper can&rsquo;t deploy the turn it lands — it looks faded until ready.</li>
+      <li>Surround a connected group so it has no empty neighbor, and it&rsquo;s captured.</li>
+      <li>Drones only come from a living, ready trooper — protect your anchors.</li>
+    </ul>
+    <h3>Setups</h3>
+    <p>The setup dropdown only changes <i>where your troopers start</i> — the rules
+       never change. More committed forward = more early pressure, less flexibility.</p>
+  </div>
+</div>
 
 <!-- ===RULES_START===  (pure, DOM-free; node test extracts this block) -->
 <script>
@@ -483,16 +529,16 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   document.getElementById("mode").onchange=start;
   document.getElementById("size").onchange=start;
   document.getElementById("variant").onchange=start;
-  document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();alert(
-    "HOSHI — one action per turn:\n\n"+
-    "• Place a trooper (the star) on any empty point, OR\n"+
-    "• Deploy a drone on a lit point within range of a READY trooper, OR\n"+
-    "• End & score (finish the game and count territory).\n\n"+
-    "A trooper can't deploy the turn it lands (it shows faded until ready).\n"+
-    "Capture: a connected group with no empty orthogonal neighbor is removed.\n"+
-    "Win: capture 3 enemy troopers, or hold more territory when the game ends.\n\n"+
-    "Setup (the dropdown) only changes where your troopers start — the rules\n"+
-    "never change. More forward at the start = more pressure but less flexibility.");};
+  const rulesModal=document.getElementById("rules");
+  const showRules=()=>rulesModal.classList.add("show");
+  const hideRules=()=>rulesModal.classList.remove("show");
+  document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();showRules();};
+  document.getElementById("rulesClose").onclick=hideRules;
+  rulesModal.addEventListener("click",e=>{ if(e.target===rulesModal) hideRules(); });
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape") hideRules(); });
+  // first visit: open the rules once so new players aren't dropped in cold
+  try{ if(!localStorage.getItem("hoshi_seen")){ showRules(); localStorage.setItem("hoshi_seen","1"); } }catch(e){}
+
   window.addEventListener("resize",()=>{if(s){buildBoard();render();}});
   start();
 })();

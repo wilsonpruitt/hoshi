@@ -29,6 +29,9 @@
   button:hover{background:#fff8e8}
   button:disabled{opacity:.4;cursor:default}
   button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  button.danger{background:var(--red);color:#fff;border-color:var(--red)}
+  button.danger:hover{background:#c8453c}
+  .warn{color:var(--red);font-weight:600}
   .meta{display:flex;gap:22px;margin-top:10px;font-size:14px;color:var(--ink)}
   .meta b{font-weight:700}
   .reserve-pip{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:2px}
@@ -310,7 +313,8 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       const t=document.createElementNS(SVGNS,"rect");
       t.setAttribute("x",PAD+c*S-S*0.45);t.setAttribute("y",PAD+r*S-S*0.45);
       t.setAttribute("width",S*0.9);t.setAttribute("height",S*0.9);t.setAttribute("rx",2);
-      t.setAttribute("fill",owner[i]===0?"var(--blue)":"var(--red)");t.setAttribute("opacity","0.16");
+      t.setAttribute("fill",owner[i]===0?"var(--blue)":"var(--red)");
+      t.setAttribute("opacity",s.over?"0.34":"0.16");   // bolder territory map at game end
       layer.appendChild(t);
     }
     // deploy zone highlight (signature): empty points reachable by a ready trooper, in drone mode
@@ -357,6 +361,10 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     document.getElementById("mDrone").classList.toggle("on",mode==='drone');
     document.getElementById("mTrooper").disabled = s.reserve[s.toMove]<=0;
     document.getElementById("undo").disabled = hist.length===0;
+    const passBtn=document.getElementById("pass");   // warn when the next pass ends it
+    const ending = !s.over && s.passes===1;
+    passBtn.textContent = ending ? "Pass → ends game" : "Pass";
+    passBtn.classList.toggle("danger", ending);
     // live area score (stones + enclosed territory)
     const sc=Hoshi.areaScore(s);
     document.getElementById("score").innerHTML =
@@ -430,20 +438,27 @@ if(typeof module!=='undefined') module.exports=Hoshi;
 
   function status(){
     const el=document.getElementById("status");
+    const sc=Hoshi.areaScore(s);
     if(s.over){
-      if(s.winner===-1){el.textContent="Draw — territory tied.";return;}
+      if(s.winner===-1){el.innerHTML=`<b>Draw</b> — territory tied ${sc[0]}–${sc[1]}.`;return;}
       const who=s.winner===0?"Blue":"Red";
-      const sc=Hoshi.areaScore(s);
       const byCap=s.lostTroopers[1-s.winner]>=s.captureToWin;
-      el.innerHTML=`<span class="dot" style="background:${s.winner?'var(--red)':'var(--blue)'}"></span>`+
-        `${who} wins — ${byCap?`captured ${s.captureToWin} troopers`:`territory ${sc[0]}–${sc[1]}`}.`;
+      const dot=`<span class="dot" style="background:${s.winner?'var(--red)':'var(--blue)'}"></span>`;
+      el.innerHTML = byCap
+        ? `${dot}<b>${who} wins</b> by decapitation — captured ${s.captureToWin} troopers.`
+        : `${dot}<b>${who} wins</b> by territory — ${sc[0]}–${sc[1]} (+${Math.abs(sc[0]-sc[1])}).`;
       return;
     }
     const who=s.toMove===0?"Blue":"Red";
     const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
     if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
     const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
-    el.innerHTML=`${dot}${who} to move — ${act}.`;
+    let line=`${dot}${who} to move — ${act}.`;
+    if(s.passes===1){               // opponent just passed: one more pass ends the game
+      const lead = sc[0]===sc[1]?"tied":(sc[0]>sc[1]?"Blue ahead":"Red ahead");
+      line += ` <span class="warn">Pass again to END the game — ${lead} ${sc[0]}–${sc[1]}.</span>`;
+    }
+    el.innerHTML=line;
   }
 
   // controls

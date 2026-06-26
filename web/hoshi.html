@@ -192,30 +192,45 @@
      inside the Web Worker (its text is read and injected into the worker blob). -->
 <script id="bot-kernel">
 const Bot = (function(){
-  // greedy static eval (mirrors the Python GreedyPlayer): capture pressure
-  // dominates, then board presence, minus own-trooper atari risk.
+  // Static eval from `me`'s view. Captures dominate (decapitation is the fast win),
+  // then enclosed territory, then *liberty pressure*: squeezing an enemy group
+  // toward capture is rewarded (attack) and letting my own group get squeezed is
+  // punished (defense) — a gradient that exists BEFORE the capture lands, so a
+  // shallow search will actually pursue and prevent captures instead of playing
+  // passively. Trooper groups weigh far more: they're the decap target and the
+  // engine that deploys drones.
   function evaluate(st, me){
     if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
-    const opp=1-me, stones=[0,0];
-    for(const b of st.board) if(b) stones[b.c]++;
-    let atari=0; const seen=new Set();
-    for(let i=0;i<st.board.length;i++){const b=st.board[i];
-      if(b && b.c===me && b.k==='T' && !seen.has(i)){
-        const {group,libs}=Hoshi.groupLib(st.N,st.board,i);
-        group.forEach(g=>seen.add(g));
-        if(libs<=1) atari++;
-      }}
-    return 30*(st.lostTroopers[opp]-st.lostTroopers[me]) + (stones[me]-stones[opp]) - 4*atari;
+    const opp=1-me;
+    const area=Hoshi.areaScore(st);                 // stones + enclosed territory, per color
+    let pressure=0; const seen=new Set();
+    for(let i=0;i<st.board.length;i++){
+      const b=st.board[i]; if(!b || seen.has(i)) continue;
+      const {group,libs}=Hoshi.groupLib(st.N,st.board,i);
+      let hasT=false; for(const g of group){ seen.add(g); if(st.board[g].k==='T') hasT=true; }
+      const danger = libs<=1?1.0 : libs===2?0.45 : libs===3?0.15 : 0;   // closer to capture = bigger
+      if(danger){ const w=hasT?8:2;                                      // trooper group >> drone group
+        pressure += (b.c===opp ? w : -w)*danger; }                      // enemy squeezed +, mine squeezed -
+    }
+    return 30*(st.lostTroopers[opp]-st.lostTroopers[me])
+         + 1.5*(area[me]-area[opp])
+         + pressure;
   }
-  function botMove(st){          // 1-ply greedy (the "Easy" bot)
+  // 1-ply greedy. `blunder` (0..1) is the chance of playing a random legal move
+  // instead of the best — the Easy tier's handle: a strong eval makes pure greedy
+  // a sharp opponent, so Easy slips on purpose to stay human-beatable. Medium
+  // passes 0 (clean greedy); Hard uses MCTS below.
+  function botMove(st, blunder){
     const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
-    let best=null, bestM={type:'pass'};
+    const legal=[]; let best=null, bestM={type:'pass'};
     for(const m of Hoshi.legalMoves(st)){
       if(m.type==='pass' && filled<0.92) continue;
       const ns=Hoshi.apply(st,m); if(ns===null) continue;
+      legal.push(m);
       const v=evaluate(ns,me)+Math.random()*0.01;
       if(best===null || v>best){best=v; bestM=m;}
     }
+    if(blunder && legal.length>1 && Math.random()<blunder) return legal[(Math.random()*legal.length)|0];
     return bestM;
   }
   // MCTS (UCT) with a 1-ply greedy shortlist + fast rollouts + eval fallback.
@@ -232,20 +247,37 @@ const Bot = (function(){
     scored.sort((a,b)=>a[0]-b[0]);          // ascending; pop() yields the best first
     return scored.slice(-width).map(x=>x[1]);
   }
+  // Tactical rollout: random uniform playouts gave MCTS no signal (so more sims
+  // barely helped). Here a playout mostly seeks contact and always grabs an
+  // immediate capture — giving the search a realistic, aggressive continuation —
+  // while keeping ~25% randomness so MCTS still sees variance. Kept cheap: one
+  // enemy-count per step, a bounded candidate sample.
   function rollout(state,depthCap){
     let s2={...state, history:new Set()}, depth=0;   // superko off (throwaway, bounded)
     while(!s2.over && depth<depthCap){
-      const N=s2.N, me=s2.toMove, empt=[];
-      for(let i=0;i<N*N;i++) if(s2.board[i]==null) empt.push(i);
+      const N=s2.N, me=s2.toMove, opp=1-me;
+      const empt=[]; let enemyBefore=0;
+      for(let i=0;i<N*N;i++){ if(s2.board[i]==null) empt.push(i); else if(s2.board[i].c===opp) enemyBefore++; }
       for(let i=empt.length-1;i>0;i--){const j=(Math.random()*(i+1))|0; const t=empt[i];empt[i]=empt[j];empt[j]=t;}
       const ready=Hoshi.readyTroopers(s2,me), canDrop=s2.reserve[me]>0;
-      let next=null, tried=0;
+      const aggressive=Math.random()<0.75;
+      let cap=null, contact=null, anyLegal=null, tried=0;
       for(const pt of empt){
-        if(ready.length && Hoshi.legalDrone(s2,pt)){ const ns=Hoshi.apply(s2,{type:'drone',i:pt}); if(ns){next=ns;break;} }
-        if(canDrop){ const ns=Hoshi.apply(s2,{type:'trooper',i:pt}); if(ns){next=ns;break;} }
-        if(++tried>=24) break;
+        let ns=null;
+        if(ready.length && Hoshi.legalDrone(s2,pt)) ns=Hoshi.apply(s2,{type:'drone',i:pt});
+        if(ns===null && canDrop) ns=Hoshi.apply(s2,{type:'trooper',i:pt});
+        if(ns===null) continue;
+        if(anyLegal===null) anyLegal=ns;
+        if(!aggressive) break;                                  // plain random playout: first legal
+        let touches=false; for(const q of Hoshi.orth(N,pt)){const bb=s2.board[q]; if(bb&&bb.c===opp){touches=true;break;}}
+        if(touches){
+          let enemyAfter=0; for(const b of ns.board) if(b&&b.c===opp) enemyAfter++;
+          if(enemyAfter<enemyBefore){ cap=ns; break; }          // immediate capture — take it now
+          if(contact===null) contact=ns;
+        }
+        if(++tried>=14) break;
       }
-      s2 = next || Hoshi.apply(s2,{type:'pass'});
+      s2 = cap || (aggressive&&contact) || anyLegal || Hoshi.apply(s2,{type:'pass'});
       depth++;
     }
     if(s2.over) return s2.winner;
@@ -318,9 +350,11 @@ if(typeof module!=='undefined') module.exports=Bot;
   //     thread. Falls back to running synchronously if a worker can't be made
   //     (e.g. blob workers blocked on file://). Difficulty sets the sim budget. ---
   let worker=null;
-  function simsForDifficulty(){
-    const d=document.getElementById("diff").value;
-    return d==='easy' ? 0 : d==='hard' ? 140 : 55;   // Easy=greedy, Medium/Hard=MCTS sims
+  function tierParams(){   // three distinct policies, not just sim counts (a strong
+    const d=document.getElementById("diff").value;   // eval makes 1-ply greedy a real opponent)
+    if(d==='easy') return {sims:0,   blunder:0.4};   // greedy that slips often — beatable
+    if(d==='hard') return {sims:240, blunder:0};     // MCTS lookahead
+    return {sims:0, blunder:0};                       // Medium = clean, sharp 1-ply greedy
   }
   let botStart=0, botMinThink=0;                      // pacing so moves are watchable
   function pacedApply(mv,seq){                        // hold the move until min think-time elapses
@@ -336,7 +370,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       const src = "importScripts(" + JSON.stringify(rulesURL) + ");\n"
         + document.getElementById("bot-kernel").textContent + "\n"
         + "onmessage=function(e){var d=e.data;"
-        + "var mv=d.sims>0?Bot.mctsMove(d.state,d.sims,8,d.depthCap):Bot.botMove(d.state);"
+        + "var mv=d.sims>0?Bot.mctsMove(d.state,d.sims,8,d.depthCap):Bot.botMove(d.state,d.blunder);"
         + "postMessage({move:mv,seq:d.seq});};";
       worker=new Worker(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
       worker.onmessage=(e)=>pacedApply(e.data.move,e.data.seq);
@@ -345,13 +379,13 @@ if(typeof module!=='undefined') module.exports=Bot;
   }
   function scheduleBot(){
     if(s.over || players[s.toMove]!=='cpu') return;
-    const seq=moveSeq, sims=simsForDifficulty(), depthCap=s.N>=13?28:36;
+    const seq=moveSeq, {sims,blunder}=tierParams(), depthCap=s.N>=13?28:36;
     botStart=Date.now();
     botMinThink = document.getElementById("mode").value==='cpucpu' ? 800 : 450;   // watchable pace
-    if(worker){ worker.postMessage({state:s, sims, depthCap, seq}); return; }
+    if(worker){ worker.postMessage({state:s, sims, blunder, depthCap, seq}); return; }
     setTimeout(()=>{   // synchronous fallback
       if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;
-      pacedApply(sims>0 ? Bot.mctsMove(s,sims,8,depthCap) : Bot.botMove(s), seq);
+      pacedApply(sims>0 ? Bot.mctsMove(s,sims,8,depthCap) : Bot.botMove(s,blunder), seq);
     }, 0);
   }
 

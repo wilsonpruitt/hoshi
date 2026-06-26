@@ -173,6 +173,17 @@
 </div>
 
 <!-- ===RULES_START===  (pure, DOM-free; node test extracts this block) -->
+<!-- Hoshi online (Tier 1): Supabase client. Optional — the offline game and the
+     Tier 0 #g= share links work fine without it. hoshiDB stays null until a real
+     anon key is present, and online mode degrades to disabled. -->
+<script src="supabase-config.js"></script>
+<script src="vendor/supabase.js"></script>   <!-- vendored supabase-js v2 (same-origin; no CDN trust) -->
+<script>
+  window.hoshiDB = (window.HOSHI_SUPABASE && window.supabase
+      && !/PASTE_/.test(window.HOSHI_SUPABASE.anonKey))
+    ? window.supabase.createClient(window.HOSHI_SUPABASE.url, window.HOSHI_SUPABASE.anonKey)
+    : null;
+</script>
 <script src="hoshi-rules.js"></script>
 <!-- ===RULES_END=== -->
 

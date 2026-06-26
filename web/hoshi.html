@@ -448,6 +448,10 @@ if(typeof module!=='undefined') module.exports=Bot;
     const d=document.getElementById("diff").value;
     return d==='easy' ? 0 : d==='hard' ? 140 : 55;   // Easy=greedy, Medium/Hard=MCTS sims
   }
+  let botStart=0, botMinThink=0;                      // pacing so moves are watchable
+  function pacedApply(mv,seq){                        // hold the move until min think-time elapses
+    setTimeout(()=>applyBotMove(mv,seq), Math.max(0, botMinThink-(Date.now()-botStart)));
+  }
   function applyBotMove(mv,seq){
     if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;   // stale (undo/new/etc.)
     doMove(mv); render(); scheduleBot();              // chain (also drives CPU vs CPU)
@@ -460,18 +464,20 @@ if(typeof module!=='undefined') module.exports=Bot;
         + "var mv=d.sims>0?Bot.mctsMove(d.state,d.sims,8,d.depthCap):Bot.botMove(d.state);"
         + "postMessage({move:mv,seq:d.seq});};";
       worker=new Worker(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
-      worker.onmessage=(e)=>applyBotMove(e.data.move,e.data.seq);
+      worker.onmessage=(e)=>pacedApply(e.data.move,e.data.seq);
       worker.onerror=()=>{ worker=null; };
     }catch(e){ worker=null; }
   }
   function scheduleBot(){
     if(s.over || players[s.toMove]!=='cpu') return;
     const seq=moveSeq, sims=simsForDifficulty(), depthCap=s.N>=13?28:36;
+    botStart=Date.now();
+    botMinThink = document.getElementById("mode").value==='cpucpu' ? 800 : 450;   // watchable pace
     if(worker){ worker.postMessage({state:s, sims, depthCap, seq}); return; }
     setTimeout(()=>{   // synchronous fallback
       if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;
-      applyBotMove(sims>0 ? Bot.mctsMove(s,sims,8,depthCap) : Bot.botMove(s), seq);
-    }, 40);
+      pacedApply(sims>0 ? Bot.mctsMove(s,sims,8,depthCap) : Bot.botMove(s), seq);
+    }, 0);
   }
 
   let S, PAD; // pixel spacing, padding

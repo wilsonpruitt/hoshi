@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Sweep / run outputs (kept out of git; regenerate with sweep.py)
+*.out
+/tmp_sweeps/

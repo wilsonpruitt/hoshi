@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HOSHI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#e9dec5; --paper-line:#b39b6e; --ink:#23201a; --muted:#7a6f5c;
+    --blue:#2f5fa6; --red:#b23a32; --zone:#7fb0e8; --zone-red:#dd8b7a; --panel:#f4ecd8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#d9cba8;color:var(--ink);
+       font-family:"Space Grotesk",system-ui,sans-serif;
+       display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:18px}
+  header{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  h1{font-size:34px;font-weight:700;letter-spacing:.14em;margin:0}
+  .tag{color:var(--muted);font-size:13px;letter-spacing:.04em}
+  #status{font-size:15px;min-height:22px;margin:8px 0;font-weight:500}
+  .dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin:0 4px}
+  #board{background:var(--paper);border-radius:6px;
+         box-shadow:0 8px 30px rgba(0,0,0,.22), inset 0 0 0 1px rgba(0,0,0,.06);touch-action:manipulation}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px;max-width:560px}
+  button,select{font-family:inherit;font-size:14px;border:1px solid #00000022;border-radius:8px;
+    padding:9px 13px;background:var(--panel);color:var(--ink);cursor:pointer;font-weight:500}
+  button:hover{background:#fff8e8}
+  button:disabled{opacity:.4;cursor:default}
+  button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .meta{display:flex;gap:22px;margin-top:10px;font-size:14px;color:var(--ink)}
+  .meta b{font-weight:700}
+  .reserve-pip{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:2px}
+  a.small{color:var(--muted);font-size:12px;margin-top:14px;text-decoration:none}
+  @media (prefers-reduced-motion:no-preference){
+    .zonecell{transition:opacity .12s ease}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>HOSHI</h1>
+  <span class="tag">paratroopers &middot; drones &middot; territory</span>
+</header>
+<div id="status"></div>
+<svg id="board"></svg>
+<div class="meta">
+  <span><span class="dot" style="background:var(--blue)"></span>Blue reserve <b id="rb">5</b> &middot; lost <b id="lb">0</b></span>
+  <span><span class="dot" style="background:var(--red)"></span>Red reserve <b id="rr">5</b> &middot; lost <b id="lr">0</b></span>
+</div>
+<div class="controls">
+  <button id="mTrooper">Place trooper</button>
+  <button id="mDrone">Deploy drone</button>
+  <button id="pass">Pass</button>
+  <button id="undo">Undo</button>
+  <button id="new">New game</button>
+  <select id="size">
+    <option value="9">9 &times; 9 (faster)</option>
+    <option value="13">13 &times; 13</option>
+  </select>
+  <select id="variant" title="Where your troopers start — same rules, different game">
+    <option value="beachhead">Beachhead — all in reserve</option>
+    <option value="vanguard">Vanguard — 1 deployed</option>
+    <option value="garrison" selected>Garrison — 2 deployed</option>
+    <option value="bastion">Bastion — 3 deployed</option>
+    <option value="fog">Fog — 5 scattered</option>
+  </select>
+</div>
+<a class="small" href="#" id="rulesLink">how to play</a>
+
+<!-- ===RULES_START===  (pure, DOM-free; node test extracts this block) -->
+<script>
+const Hoshi = (function(){
+  function makeConfig(N){
+    // Drone range tuned to keep board/range ~2.3 — the validated balance ratio.
+    // Too sparse (ratio >>2.5) and zones stop overlapping: the game decomposes
+    // into two solitaires and the capture win-path dies. 9->4, 13->6.
+    const R = Math.max(3, Math.round(N/2.3));
+    return { N, R, troopers:5, captureToWin:3 };
+  }
+  // Setup variants are a "hidden rule" (just a starting position) — they add no
+  // rules to learn but are the game's main source of strategic variety: how many
+  // troopers you commit forward at the start. -1 = fog (scatter all).
+  const SETUP_HOME = {beachhead:0, vanguard:1, garrison:2, bastion:3, fog:-1};
+  function spreadCols(N,r,k){
+    const out=[]; for(let t=0;t<k;t++){
+      const c=Math.min(N-1,Math.max(0,Math.round((t+1)*N/(k+1))));
+      out.push(r*N+c);
+    } return out;
+  }
+  const idx=(N,r,c)=>r*N+c;
+  const rc=(N,i)=>[Math.floor(i/N), i%N];
+  const cheb=(N,i,j)=>{const[a,b]=rc(N,i),[d,e]=rc(N,j);return Math.max(Math.abs(a-d),Math.abs(b-e));};
+  function orth(N,i){const[r,c]=rc(N,i),o=[];
+    if(r>0)o.push(i-N); if(r<N-1)o.push(i+N); if(c>0)o.push(i-1); if(c<N-1)o.push(i+1); return o;}
+
+  function groupLib(N,board,i){
+    const color=board[i].c, seen=new Set([i]), st=[i]; let libs=0; const lib=new Set();
+    while(st.length){const p=st.pop();
+      for(const q of orth(N,p)){
+        if(board[q]==null){ if(!lib.has(q)){lib.add(q);libs++;} }
+        else if(board[q].c===color && !seen.has(q)){seen.add(q);st.push(q);}
+      }}
+    return {group:[...seen], libs};
+  }
+  function ready(s,i){ const p=s.placedPly[i]; return p===undefined ? true : s.ply >= p+2; }
+  function readyTroopers(s,color){
+    const out=[]; for(let i=0;i<s.board.length;i++){const b=s.board[i];
+      if(b&&b.c===color&&b.k==='T'&&ready(s,i))out.push(i);} return out;}
+  function legalDrone(s,i){
+    if(s.board[i]!=null)return false;
+    const rt=readyTroopers(s,s.toMove);
+    return rt.some(t=>cheb(s.N,t,i)<=s.R);
+  }
+  function legalTrooper(s,i){ return s.board[i]==null && s.reserve[s.toMove]>0; }
+
+  function clone(s){
+    return {N:s.N,R:s.R,troopers:s.troopers,captureToWin:s.captureToWin,
+      board:s.board.map(x=>x?{c:x.c,k:x.k}:null),
+      reserve:[...s.reserve], lostTroopers:[...s.lostTroopers],
+      placedPly:Object.assign({},s.placedPly),
+      toMove:s.toMove, ply:s.ply, passes:s.passes, over:s.over, winner:s.winner};
+  }
+
+  function areaScore(s){
+    const N=s.N, stones=[0,0]; for(const b of s.board) if(b)stones[b.c]++;
+    const seen=new Set(), terr=[0,0];
+    for(let i=0;i<N*N;i++){
+      if(s.board[i]!=null||seen.has(i))continue;
+      const reg=[i], st=[i], border=new Set(); seen.add(i);
+      while(st.length){const p=st.pop();
+        for(const q of orth(N,p)){
+          if(s.board[q]!=null)border.add(s.board[q].c);
+          else if(!seen.has(q)){seen.add(q);reg.push(q);st.push(q);}
+        }}
+      if(border.size===1)terr[[...border][0]]+=reg.length;
+    }
+    return [stones[0]+terr[0], stones[1]+terr[1]];
+  }
+  function endTerritory(ns){
+    const [a,b]=areaScore(ns); ns.over=true; ns.winner = a>b?0:(b>a?1:-1);
+  }
+
+  // move = {type:'trooper'|'drone'|'pass', i}
+  function apply(s, move){
+    const ns=clone(s), me=s.toMove;
+    if(move.type==='pass'){ ns.passes++; ns.toMove^=1; ns.ply++;
+      if(ns.passes>=2)endTerritory(ns); return ns; }
+    const i=move.i;
+    if(ns.board[i]!=null)return null;
+    if(move.type==='trooper'){ if(ns.reserve[me]<=0)return null; }
+    else { if(!legalDrone(s,i))return null; }
+    ns.board[i]={c:me,k:move.type==='trooper'?'T':'D'};
+    // remove dead enemy groups
+    const dead=new Set();
+    for(const q of orth(ns.N,i)){
+      if(ns.board[q]&&ns.board[q].c!==me&&!dead.has(q)){
+        const {group,libs}=groupLib(ns.N,ns.board,q);
+        if(libs===0)group.forEach(g=>dead.add(g));
+      }}
+    dead.forEach(d=>{ if(ns.board[d].k==='T'){ns.lostTroopers[1-me]++; delete ns.placedPly[d];}
+                      ns.board[d]=null; });
+    // suicide
+    const {libs}=groupLib(ns.N,ns.board,i);
+    if(libs===0 && dead.size===0)return null;
+    // bookkeeping
+    if(move.type==='trooper'){ ns.reserve[me]--; ns.placedPly[i]=ns.ply; }
+    ns.passes=0;
+    if(ns.lostTroopers[1-me]>=ns.captureToWin){ ns.over=true; ns.winner=me; }
+    ns.toMove^=1; ns.ply++;
+    return ns;
+  }
+
+  function legalMoves(s){
+    const out=[{type:'pass'}];
+    if(s.reserve[s.toMove]>0)
+      for(let i=0;i<s.board.length;i++) if(legalTrooper(s,i)) out.push({type:'trooper',i});
+    for(let i=0;i<s.board.length;i++) if(legalDrone(s,i)) out.push({type:'drone',i});
+    return out;
+  }
+
+  function newState(N, variant){
+    const cfg=makeConfig(N);
+    const s={...cfg, board:new Array(N*N).fill(null),
+      reserve:[cfg.troopers,cfg.troopers], lostTroopers:[0,0], placedPly:{},
+      toMove:0, ply:0, passes:0, over:false, winner:null};
+    const home = (variant in SETUP_HOME) ? SETUP_HOME[variant] : 2;
+    for(const color of [0,1]){
+      let pts=[];
+      if(home<0){                                   // fog: scatter all troopers
+        while(pts.length<cfg.troopers){ const i=Math.floor(Math.random()*N*N);
+          if(s.board[i]==null && !pts.includes(i)) pts.push(i); }
+      } else {                                       // commit `home` to the back row
+        pts = spreadCols(N, color===0?0:N-1, home);
+      }
+      for(const i of pts){ if(s.board[i]!=null)continue;
+        s.board[i]={c:color,k:'T'}; s.reserve[color]--; s.placedPly[i]=-10; }
+    }
+    return s;
+  }
+
+  return {makeConfig,newState,apply,legalMoves,legalDrone,legalTrooper,
+          readyTroopers,ready,areaScore,groupLib,cheb,orth,idx,rc};
+})();
+if(typeof module!=='undefined') module.exports=Hoshi;
+</script>
+<!-- ===RULES_END=== -->
+
+<script>
+(function(){
+  const SVGNS="http://www.w3.org/2000/svg";
+  const board=document.getElementById("board");
+  let s, mode='trooper', hist=[];
+
+  const hoshiPoints=(N)=>{ // star points (homage); 9-dot pattern scaled
+    const a=N>=13?3:2, m=Math.floor(N/2), z=N-1-a;
+    const lines=[a,m,z], pts=[];
+    for(const r of lines)for(const c of lines)pts.push([r,c]);
+    return pts;
+  };
+
+  function start(){
+    const N=+document.getElementById("size").value;
+    const variant=document.getElementById("variant").value;
+    s=Hoshi.newState(N,variant); hist=[]; mode='trooper';
+    buildBoard(); render();
+  }
+
+  let S, PAD; // pixel spacing, padding
+  function buildBoard(){
+    const N=s.N;
+    const px=Math.min(560, Math.floor(Math.min(window.innerWidth*0.92, 560)));
+    PAD=Math.round(px/(N+1)); S=Math.round((px-2*PAD)/(N-1));
+    const dim=2*PAD+(N-1)*S;
+    board.setAttribute("viewBox",`0 0 ${dim} ${dim}`);
+    board.setAttribute("width",dim); board.setAttribute("height",dim);
+    board.innerHTML="";
+    const g=document.createElementNS(SVGNS,"g");
+    for(let k=0;k<N;k++){
+      const off=PAD+k*S;
+      line(g,PAD,off,PAD+(N-1)*S,off); line(g,off,PAD,off,PAD+(N-1)*S);
+    }
+    for(const [r,c] of hoshiPoints(N)){
+      const d=document.createElementNS(SVGNS,"circle");
+      d.setAttribute("cx",PAD+c*S); d.setAttribute("cy",PAD+r*S);
+      d.setAttribute("r",3); d.setAttribute("fill","#3c3526"); g.appendChild(d);
+    }
+    board.appendChild(g);
+    layer=document.createElementNS(SVGNS,"g"); board.appendChild(layer);
+  }
+  let layer;
+  function line(g,x1,y1,x2,y2){const l=document.createElementNS(SVGNS,"line");
+    l.setAttribute("x1",x1);l.setAttribute("y1",y1);l.setAttribute("x2",x2);l.setAttribute("y2",y2);
+    l.setAttribute("stroke","var(--paper-line)");l.setAttribute("stroke-width",1.2);g.appendChild(l);}
+
+  function render(){
+    const N=s.N; layer.innerHTML="";
+    // deploy zone highlight (signature): empty points reachable by a ready trooper, in drone mode
+    const zone=new Set();
+    if(mode==='drone' && !s.over){
+      for(let i=0;i<N*N;i++) if(Hoshi.legalDrone(s,i)) zone.add(i);
+    }
+    const zoneFill = s.toMove===0 ? "var(--zone)" : "var(--zone-red)";
+    zone.forEach(i=>{const[r,c]=Hoshi.rc(N,i);
+      const z=document.createElementNS(SVGNS,"circle");
+      z.setAttribute("cx",PAD+c*S);z.setAttribute("cy",PAD+r*S);z.setAttribute("r",S*0.46);
+      z.setAttribute("fill",zoneFill);z.setAttribute("opacity","0.28");
+      z.setAttribute("class","zonecell");layer.appendChild(z);});
+    // stones
+    for(let i=0;i<N*N;i++){const b=s.board[i]; if(!b)continue;
+      const[r,c]=Hoshi.rc(N,i), x=PAD+c*S, y=PAD+r*S, col=b.c===0?"var(--blue)":"var(--red)";
+      if(b.k==='T'){ star(x,y,S*0.42,col, !Hoshi.ready(s,i)); }
+      else { const d=document.createElementNS(SVGNS,"circle");
+        d.setAttribute("cx",x);d.setAttribute("cy",y);d.setAttribute("r",S*0.24);
+        d.setAttribute("fill",col);d.setAttribute("opacity","0.92");layer.appendChild(d);}
+    }
+    // click targets
+    for(let i=0;i<N*N;i++){const[r,c]=Hoshi.rc(N,i);
+      const t=document.createElementNS(SVGNS,"rect");
+      t.setAttribute("x",PAD+c*S-S/2);t.setAttribute("y",PAD+r*S-S/2);
+      t.setAttribute("width",S);t.setAttribute("height",S);t.setAttribute("fill","transparent");
+      t.style.cursor= s.over?"default":"pointer"; t.addEventListener("click",()=>onClick(i));
+      layer.appendChild(t);}
+    // meta
+    document.getElementById("rb").textContent=s.reserve[0];
+    document.getElementById("rr").textContent=s.reserve[1];
+    document.getElementById("lb").textContent=s.lostTroopers[0];
+    document.getElementById("lr").textContent=s.lostTroopers[1];
+    document.getElementById("mTrooper").classList.toggle("on",mode==='trooper');
+    document.getElementById("mDrone").classList.toggle("on",mode==='drone');
+    document.getElementById("mTrooper").disabled = s.reserve[s.toMove]<=0;
+    document.getElementById("undo").disabled = hist.length===0;
+    status();
+  }
+  function star(x,y,R,fill,dim){
+    const pts=[]; for(let k=0;k<10;k++){const ang=-Math.PI/2+k*Math.PI/5,
+      rad=k%2?R*0.45:R; pts.push((x+rad*Math.cos(ang))+","+(y+rad*Math.sin(ang)));}
+    const p=document.createElementNS(SVGNS,"polygon");
+    p.setAttribute("points",pts.join(" "));p.setAttribute("fill",fill);
+    if(dim)p.setAttribute("opacity","0.55"); // not-yet-ready trooper looks faded
+    layer.appendChild(p);
+  }
+
+  function onClick(i){
+    if(s.over)return;
+    const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
+    const ns=Hoshi.apply(s,move);
+    if(ns===null){ flash(i); return; }
+    hist.push(s); s=ns;
+    if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
+    render();
+  }
+  function flash(i){ const[r,c]=Hoshi.rc(s.N,i);
+    const ring=document.createElementNS(SVGNS,"circle");
+    ring.setAttribute("cx",PAD+c*S);ring.setAttribute("cy",PAD+r*S);ring.setAttribute("r",S*0.46);
+    ring.setAttribute("fill","none");ring.setAttribute("stroke","#b23a32");ring.setAttribute("stroke-width","2");
+    layer.appendChild(ring); setTimeout(()=>ring.remove(),260);
+  }
+
+  function status(){
+    const el=document.getElementById("status");
+    if(s.over){
+      if(s.winner===-1){el.textContent="Draw — territory tied.";return;}
+      const who=s.winner===0?"Blue":"Red";
+      const sc=Hoshi.areaScore(s);
+      const byCap=s.lostTroopers[1-s.winner]>=s.captureToWin;
+      el.innerHTML=`<span class="dot" style="background:${s.winner?'var(--red)':'var(--blue)'}"></span>`+
+        `${who} wins — ${byCap?`captured ${s.captureToWin} troopers`:`territory ${sc[0]}–${sc[1]}`}.`;
+      return;
+    }
+    const who=s.toMove===0?"Blue":"Red";
+    const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
+    el.innerHTML=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`+
+      `${who} to move — ${act}.`;
+  }
+
+  // controls
+  document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
+  document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
+  document.getElementById("pass").onclick=()=>{const ns=Hoshi.apply(s,{type:'pass'});hist.push(s);s=ns;render();};
+  document.getElementById("undo").onclick=()=>{if(hist.length){s=hist.pop();render();}};
+  document.getElementById("new").onclick=start;
+  document.getElementById("size").onchange=start;
+  document.getElementById("variant").onchange=start;
+  document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();alert(
+    "HOSHI — one action per turn:\n\n"+
+    "• Place a trooper (the star) on any empty point, OR\n"+
+    "• Deploy a drone on a lit point within range of a READY trooper, OR\n"+
+    "• Pass (two passes in a row ends the game).\n\n"+
+    "A trooper can't deploy the turn it lands (it shows faded until ready).\n"+
+    "Capture: a connected group with no empty orthogonal neighbor is removed.\n"+
+    "Win: capture 3 enemy troopers, or hold more territory when both pass.\n\n"+
+    "Setup (the dropdown) only changes where your troopers start — the rules\n"+
+    "never change. More forward at the start = more pressure but less flexibility.");};
+  window.addEventListener("resize",()=>{if(s){buildBoard();render();}});
+  start();
+})();
+</script>
+</body>
+</html>

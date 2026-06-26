@@ -52,6 +52,10 @@
   .modal-card .close{float:right;cursor:pointer;color:var(--muted);font-size:24px;
     line-height:1;border:none;background:none;padding:0;margin:-4px -6px 0 0}
   .ghost{pointer-events:none}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:8px;font-size:13px;
+    opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:20}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   @media (prefers-reduced-motion:no-preference){
     .zonecell{transition:opacity .12s ease}
   }
@@ -90,6 +94,7 @@
   <button id="pass">End &amp; score</button>
   <button id="undo">Undo</button>
   <button id="new">New game</button>
+  <button id="share" title="Copy a link to this exact position">Copy link</button>
   <select id="mode" title="Who controls each side">
     <option value="hotseat">2 players (hot-seat)</option>
     <option value="vscpu">vs Computer (you are Blue)</option>
@@ -108,6 +113,8 @@
   </select>
 </div>
 <a class="small" id="rulesLink">how to play</a>
+
+<div id="toast"></div>
 
 <div class="modal" id="rules">
   <div class="modal-card">
@@ -302,7 +309,8 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     const variant=document.getElementById("variant").value;
     const md=document.getElementById("mode").value;
     players = md==='vscpu' ? ['human','cpu'] : md==='cpucpu' ? ['cpu','cpu'] : ['human','human'];
-    s=Hoshi.newState(N,variant); hist=[]; mode='trooper'; moveSeq++;
+    persistSettings();
+    s=Hoshi.newState(N,variant); hist=[]; mode='trooper'; lastMove=null; moveSeq++;
     buildBoard(); render(); scheduleBot();
   }
 
@@ -441,6 +449,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       `area &nbsp;<span class="dot" style="background:var(--blue)"></span><b>${sc[0]}</b>`+
       ` &nbsp;&ndash;&nbsp; <span class="dot" style="background:var(--red)"></span><b>${sc[1]}</b>`;
     status();
+    persist();
   }
   // owner[i] = 0/1 for an empty point fully enclosed by one color, else null
   function territoryMap(st){
@@ -565,7 +574,38 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     el.innerHTML=line;
   }
 
+  // --- Phase 6: persistence & sharing ---
+  const cfgKeys=["mode","size","variant"];
+  function persistSettings(){ try{ const c={}; cfgKeys.forEach(k=>c[k]=document.getElementById(k).value);
+    localStorage.setItem("hoshi_cfg",JSON.stringify(c)); }catch(e){} }
+  function restoreSettings(){ try{ const c=JSON.parse(localStorage.getItem("hoshi_cfg")||"{}");
+    cfgKeys.forEach(k=>{ if(c[k]!=null) document.getElementById(k).value=c[k]; }); }catch(e){} }
+  function stateToObj(st){ return {...st, history:[...st.history]}; }
+  function stateFromObj(o){ return {...o, history:new Set(o.history)}; }
+  function persist(){ try{ localStorage.setItem("hoshi_save",
+    JSON.stringify({st:stateToObj(s), players})); }catch(e){} }
+  function loadPayload(o){ s=stateFromObj(o.st); players=o.players||["human","human"];
+    hist=[]; lastMove=null; mode='trooper'; moveSeq++; buildBoard(); render(); scheduleBot(); }
+  function shareLink(){
+    const url=location.href.split("#")[0]+"#g="+encodeURIComponent(btoa(JSON.stringify({st:stateToObj(s),players})));
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(url).then(()=>toast("Link copied"),()=>prompt("Copy this link:",url));
+    else prompt("Copy this link:",url);
+  }
+  let toastTimer;
+  function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1600); }
+  function init(){
+    restoreSettings();
+    const h=location.hash;
+    if(h.startsWith("#g=")){ try{ loadPayload(JSON.parse(atob(decodeURIComponent(h.slice(3))))); toast("Loaded shared game"); return; }catch(e){} }
+    try{ const saved=localStorage.getItem("hoshi_save");
+      if(saved){ const o=JSON.parse(saved); if(o&&o.st&&!o.st.over){ loadPayload(o); toast("Resumed your game"); return; } } }catch(e){}
+    start();
+  }
+
   // controls
+  document.getElementById("share").onclick=shareLink;
   document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
   document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
   document.getElementById("pass").onclick=()=>{ if(s.over||players[s.toMove]==='cpu')return;
@@ -589,7 +629,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   try{ if(!localStorage.getItem("hoshi_seen")){ showRules(); localStorage.setItem("hoshi_seen","1"); } }catch(e){}
 
   window.addEventListener("resize",()=>{if(s){buildBoard();render();}});
-  start();
+  init();
 })();
 </script>
 </body>

@@ -18,7 +18,8 @@
   header{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
   h1{font-size:34px;font-weight:700;letter-spacing:.14em;margin:0}
   .tag{color:var(--muted);font-size:13px;letter-spacing:.04em}
-  #status{font-size:15px;min-height:22px;margin:8px 0;font-weight:500}
+  #status{font-size:15px;min-height:22px;margin:8px 0 2px;font-weight:500}
+  #score{font-size:13px;color:var(--muted);min-height:18px;margin-bottom:6px;letter-spacing:.02em}
   .dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin:0 4px}
   #board{background:var(--paper);border-radius:6px;
          box-shadow:0 8px 30px rgba(0,0,0,.22), inset 0 0 0 1px rgba(0,0,0,.06);touch-action:manipulation}
@@ -43,6 +44,7 @@
   <span class="tag">paratroopers &middot; drones &middot; territory</span>
 </header>
 <div id="status"></div>
+<div id="score"></div>
 <svg id="board"></svg>
 <div class="meta">
   <span><span class="dot" style="background:var(--blue)"></span>Blue reserve <b id="rb">5</b> &middot; lost <b id="lb">0</b></span>
@@ -217,6 +219,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   const board=document.getElementById("board");
   let s, mode='trooper', hist=[];
   let players=['human','human'], moveSeq=0;   // moveSeq invalidates stale bot timeouts
+  let lastMove=null;                           // last point played (for the marker)
 
   const hoshiPoints=(N)=>{ // star points (homage); 9-dot pattern scaled
     const a=N>=13?3:2, m=Math.floor(N/2), z=N-1-a;
@@ -265,8 +268,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     const seq=moveSeq;
     setTimeout(()=>{
       if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;  // stale / changed
-      const ns=Hoshi.apply(s, botMove(s));
-      if(ns){ hist.push(s); s=ns; moveSeq++; }
+      doMove(botMove(s));
       render(); scheduleBot();   // chain (handles Computer vs Computer)
     }, 350);
   }
@@ -292,14 +294,25 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     }
     board.appendChild(g);
     layer=document.createElementNS(SVGNS,"g"); board.appendChild(layer);
+    fxLayer=document.createElementNS(SVGNS,"g"); board.appendChild(fxLayer);  // capture flashes (not wiped by render)
   }
-  let layer;
+  let layer, fxLayer;
   function line(g,x1,y1,x2,y2){const l=document.createElementNS(SVGNS,"line");
     l.setAttribute("x1",x1);l.setAttribute("y1",y1);l.setAttribute("x2",x2);l.setAttribute("y2",y2);
     l.setAttribute("stroke","var(--paper-line)");l.setAttribute("stroke-width",1.2);g.appendChild(l);}
 
   function render(){
     const N=s.N; layer.innerHTML="";
+    // territory shading: faint square on each enclosed empty point, in its owner's color
+    const {owner}=territoryMap(s);
+    for(let i=0;i<N*N;i++){ if(owner[i]==null) continue;
+      const[r,c]=Hoshi.rc(N,i);
+      const t=document.createElementNS(SVGNS,"rect");
+      t.setAttribute("x",PAD+c*S-S*0.45);t.setAttribute("y",PAD+r*S-S*0.45);
+      t.setAttribute("width",S*0.9);t.setAttribute("height",S*0.9);t.setAttribute("rx",2);
+      t.setAttribute("fill",owner[i]===0?"var(--blue)":"var(--red)");t.setAttribute("opacity","0.16");
+      layer.appendChild(t);
+    }
     // deploy zone highlight (signature): empty points reachable by a ready trooper, in drone mode
     const zone=new Set();
     if(mode==='drone' && !s.over){
@@ -319,6 +332,15 @@ if(typeof module!=='undefined') module.exports=Hoshi;
         d.setAttribute("cx",x);d.setAttribute("cy",y);d.setAttribute("r",S*0.24);
         d.setAttribute("fill",col);d.setAttribute("opacity","0.92");layer.appendChild(d);}
     }
+    // last-move marker: a gold ring framing the point just played
+    if(lastMove!=null && s.board[lastMove]){
+      const[r,c]=Hoshi.rc(N,lastMove);
+      const ring=document.createElementNS(SVGNS,"circle");
+      ring.setAttribute("cx",PAD+c*S);ring.setAttribute("cy",PAD+r*S);ring.setAttribute("r",S*0.52);
+      ring.setAttribute("fill","none");ring.setAttribute("stroke","#caa24a");
+      ring.setAttribute("stroke-width","2.5");ring.setAttribute("opacity","0.95");
+      layer.appendChild(ring);
+    }
     // click targets
     for(let i=0;i<N*N;i++){const[r,c]=Hoshi.rc(N,i);
       const t=document.createElementNS(SVGNS,"rect");
@@ -335,7 +357,53 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     document.getElementById("mDrone").classList.toggle("on",mode==='drone');
     document.getElementById("mTrooper").disabled = s.reserve[s.toMove]<=0;
     document.getElementById("undo").disabled = hist.length===0;
+    // live area score (stones + enclosed territory)
+    const sc=Hoshi.areaScore(s);
+    document.getElementById("score").innerHTML =
+      `area &nbsp;<span class="dot" style="background:var(--blue)"></span><b>${sc[0]}</b>`+
+      ` &nbsp;&ndash;&nbsp; <span class="dot" style="background:var(--red)"></span><b>${sc[1]}</b>`;
     status();
+  }
+  // owner[i] = 0/1 for an empty point fully enclosed by one color, else null
+  function territoryMap(st){
+    const N=st.N, owner=new Array(N*N).fill(null), seen=new Set();
+    for(let i=0;i<N*N;i++){
+      if(st.board[i]!=null||seen.has(i))continue;
+      const reg=[i],stk=[i],border=new Set();seen.add(i);
+      while(stk.length){const p=stk.pop();
+        for(const q of Hoshi.orth(N,p)){
+          if(st.board[q]!=null)border.add(st.board[q].c);
+          else if(!seen.has(q)){seen.add(q);reg.push(q);stk.push(q);}
+        }}
+      if(border.size===1){const o=[...border][0]; for(const p of reg)owner[p]=o;}
+    }
+    return {owner};
+  }
+  // apply a move; track last point + flash any captured stones. returns false if illegal.
+  function doMove(move){
+    const before=s.board;
+    const ns=Hoshi.apply(s,move);
+    if(ns===null) return false;
+    const caps=[];
+    if(move.type!=='pass'){
+      for(let i=0;i<ns.board.length;i++) if(before[i] && !ns.board[i]) caps.push({i,c:before[i].c});
+      lastMove=move.i;
+    } else { lastMove=null; }
+    hist.push(s); s=ns; moveSeq++;
+    flashCaptures(caps);
+    return true;
+  }
+  function flashCaptures(caps){
+    for(const {i,c} of caps){
+      const[r,col]=Hoshi.rc(s.N,i);
+      const m=document.createElementNS(SVGNS,"circle");
+      m.setAttribute("cx",PAD+col*S);m.setAttribute("cy",PAD+r*S);m.setAttribute("r",S*0.3);
+      m.setAttribute("fill",c===0?"var(--blue)":"var(--red)");m.setAttribute("opacity","0.85");
+      m.style.transition="opacity .55s ease, r .55s ease";
+      fxLayer.appendChild(m);
+      requestAnimationFrame(()=>{m.setAttribute("r",S*0.55);m.setAttribute("opacity","0");});
+      setTimeout(()=>m.remove(),620);
+    }
   }
   function star(x,y,R,fill,dim){
     const pts=[]; for(let k=0;k<10;k++){const ang=-Math.PI/2+k*Math.PI/5,
@@ -349,9 +417,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   function onClick(i){
     if(s.over || players[s.toMove]==='cpu') return;   // ignore clicks on the bot's turn
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
-    const ns=Hoshi.apply(s,move);
-    if(ns===null){ flash(i); return; }
-    hist.push(s); s=ns; moveSeq++;
+    if(!doMove(move)){ flash(i); return; }
     if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
     render(); scheduleBot();
   }
@@ -384,11 +450,11 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
   document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
   document.getElementById("pass").onclick=()=>{ if(s.over||players[s.toMove]==='cpu')return;
-    hist.push(s); s=Hoshi.apply(s,{type:'pass'}); moveSeq++; render(); scheduleBot(); };
+    doMove({type:'pass'}); render(); scheduleBot(); };
   document.getElementById("undo").onclick=()=>{ if(!hist.length)return;
     s=hist.pop();
     while(hist.length && players[s.toMove]==='cpu') s=hist.pop();  // back to your own turn
-    moveSeq++; render(); };
+    moveSeq++; lastMove=null; render(); };
   document.getElementById("new").onclick=start;
   document.getElementById("mode").onchange=start;
   document.getElementById("size").onchange=start;

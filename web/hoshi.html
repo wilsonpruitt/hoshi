@@ -56,7 +56,7 @@
 <div class="controls">
   <button id="mTrooper">Place trooper</button>
   <button id="mDrone">Deploy drone</button>
-  <button id="pass">Pass</button>
+  <button id="pass">End &amp; score</button>
   <button id="undo">Undo</button>
   <button id="new">New game</button>
   <select id="mode" title="Who controls each side">
@@ -159,8 +159,7 @@ const Hoshi = (function(){
   // move = {type:'trooper'|'drone'|'pass', i}
   function apply(s, move){
     const ns=clone(s), me=s.toMove;
-    if(move.type==='pass'){ ns.passes++; ns.toMove^=1; ns.ply++;
-      if(ns.passes>=2)endTerritory(ns); return ns; }
+    if(move.type==='pass'){ ns.ply++; endTerritory(ns); return ns; }  // a pass ends & scores
     const i=move.i;
     if(ns.board[i]!=null)return null;
     if(move.type==='trooper'){ if(ns.reserve[me]<=0)return null; }
@@ -269,17 +268,13 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   }
   function botMove(st){
     const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
-    let best=null, bestM={type:'pass'}, canCapture=false;
+    let best=null, bestM={type:'pass'};
     for(const m of Hoshi.legalMoves(st)){
-      if(m.type==='pass' && filled<0.92) continue;   // pass to settle territory once full
+      if(m.type==='pass' && filled<0.92) continue;   // only end the game once it has settled
       const ns=Hoshi.apply(st,m); if(ns===null) continue;
-      if(m.type!=='pass' && ns.lostTroopers[1-me]>st.lostTroopers[1-me]) canCapture=true;
       const v=evaluate(ns,me)+Math.random()*0.01;
       if(best===null || v>best){best=v; bestM=m;}
     }
-    // agree to end a settled game: if the opponent just passed and we have no
-    // capture to make, pass back so two passes can score the territory.
-    if(st.passes===1 && !canCapture) return {type:'pass'};
     return bestM;
   }
   function scheduleBot(){
@@ -377,10 +372,6 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     document.getElementById("mDrone").classList.toggle("on",mode==='drone');
     document.getElementById("mTrooper").disabled = s.reserve[s.toMove]<=0;
     document.getElementById("undo").disabled = hist.length===0;
-    const passBtn=document.getElementById("pass");   // warn when the next pass ends it
-    const ending = !s.over && s.passes===1;
-    passBtn.textContent = ending ? "Pass → ends game" : "Pass";
-    passBtn.classList.toggle("danger", ending);
     // live area score (stones + enclosed territory)
     const sc=Hoshi.areaScore(s);
     document.getElementById("score").innerHTML =
@@ -468,19 +459,14 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     const who=s.toMove===0?"Blue":"Red";
     const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
     if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
-    if(Hoshi.legalMoves(s).length===1){   // only pass is available
-      el.innerHTML=`${dot}${who} has no moves left — press <b>Pass</b>${s.passes===1?' to score the game':''}.`;
+    if(Hoshi.legalMoves(s).length===1){   // only the end-game action remains
+      el.innerHTML=`${dot}${who} has no moves left — press <b>End &amp; score</b>.`;
       return;
     }
     const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
     let line=`${dot}${who} to move — ${act}.`;
     const filled = s.board.filter(Boolean).length/(s.N*s.N);
-    if(s.passes===1){               // opponent just passed: one more pass ends the game
-      const lead = sc[0]===sc[1]?"tied":(sc[0]>sc[1]?"Blue ahead":"Red ahead");
-      line += ` <span class="warn">Pass again to END the game — ${lead} ${sc[0]}–${sc[1]}.</span>`;
-    } else if(filled>0.6){
-      line += ` <span style="color:var(--muted)">· or Pass to score if you're done.</span>`;
-    }
+    if(filled>0.6) line += ` <span style="color:var(--muted)">· or End &amp; score if you're done (${sc[0]>sc[1]?"Blue ahead":sc[1]>sc[0]?"Red ahead":"tied"} ${sc[0]}–${sc[1]}).</span>`;
     el.innerHTML=line;
   }
 
@@ -501,10 +487,10 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     "HOSHI — one action per turn:\n\n"+
     "• Place a trooper (the star) on any empty point, OR\n"+
     "• Deploy a drone on a lit point within range of a READY trooper, OR\n"+
-    "• Pass (two passes in a row ends the game).\n\n"+
+    "• End & score (finish the game and count territory).\n\n"+
     "A trooper can't deploy the turn it lands (it shows faded until ready).\n"+
     "Capture: a connected group with no empty orthogonal neighbor is removed.\n"+
-    "Win: capture 3 enemy troopers, or hold more territory when both pass.\n\n"+
+    "Win: capture 3 enemy troopers, or hold more territory when the game ends.\n\n"+
     "Setup (the dropdown) only changes where your troopers start — the rules\n"+
     "never change. More forward at the start = more pressure but less flexibility.");};
   window.addEventListener("resize",()=>{if(s){buildBoard();render();}});

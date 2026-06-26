@@ -51,8 +51,17 @@
   .modal-card ul{margin:4px 0;padding-left:20px}
   .modal-card .close{float:right;cursor:pointer;color:var(--muted);font-size:24px;
     line-height:1;border:none;background:none;padding:0;margin:-4px -6px 0 0}
+  .ghost{pointer-events:none}
   @media (prefers-reduced-motion:no-preference){
     .zonecell{transition:opacity .12s ease}
+  }
+  @media (max-width:520px){
+    body{padding:12px}
+    h1{font-size:26px}
+    .controls{max-width:100%}
+    button,select{font-size:13px;padding:8px 10px}
+    .legend{font-size:11px;gap:5px 12px}
+    .meta{gap:14px;font-size:13px}
   }
 </style>
 </head>
@@ -342,6 +351,10 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     board.setAttribute("viewBox",`0 0 ${dim} ${dim}`);
     board.setAttribute("width",dim); board.setAttribute("height",dim);
     board.innerHTML="";
+    const defs=document.createElementNS(SVGNS,"defs");
+    defs.innerHTML='<filter id="sh" x="-40%" y="-40%" width="180%" height="180%">'+
+      '<feDropShadow dx="0" dy="1.2" stdDeviation="1.1" flood-color="#000" flood-opacity="0.28"/></filter>';
+    board.appendChild(defs);
     const g=document.createElementNS(SVGNS,"g");
     for(let k=0;k<N;k++){
       const off=PAD+k*S;
@@ -354,15 +367,16 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     }
     board.appendChild(g);
     layer=document.createElementNS(SVGNS,"g"); board.appendChild(layer);
-    fxLayer=document.createElementNS(SVGNS,"g"); board.appendChild(fxLayer);  // capture flashes (not wiped by render)
+    fxLayer=document.createElementNS(SVGNS,"g"); board.appendChild(fxLayer);    // capture/placement fx
+    ghostLayer=document.createElementNS(SVGNS,"g"); board.appendChild(ghostLayer); // hover preview
   }
-  let layer, fxLayer;
+  let layer, fxLayer, ghostLayer;
   function line(g,x1,y1,x2,y2){const l=document.createElementNS(SVGNS,"line");
     l.setAttribute("x1",x1);l.setAttribute("y1",y1);l.setAttribute("x2",x2);l.setAttribute("y2",y2);
     l.setAttribute("stroke","var(--paper-line)");l.setAttribute("stroke-width",1.2);g.appendChild(l);}
 
   function render(){
-    const N=s.N; layer.innerHTML="";
+    const N=s.N; layer.innerHTML=""; ghostLayer.innerHTML="";
     // territory shading: faint square on each enclosed empty point, in its owner's color
     const {owner}=territoryMap(s);
     for(let i=0;i<N*N;i++){ if(owner[i]==null) continue;
@@ -391,7 +405,8 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       if(b.k==='T'){ star(x,y,S*0.42,col, !Hoshi.ready(s,i)); }
       else { const d=document.createElementNS(SVGNS,"circle");
         d.setAttribute("cx",x);d.setAttribute("cy",y);d.setAttribute("r",S*0.24);
-        d.setAttribute("fill",col);d.setAttribute("opacity","0.92");layer.appendChild(d);}
+        d.setAttribute("fill",col);d.setAttribute("opacity","0.92");
+        d.setAttribute("filter","url(#sh)");layer.appendChild(d);}
     }
     // last-move marker: a gold ring framing the point just played
     if(lastMove!=null && s.board[lastMove]){
@@ -408,6 +423,8 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       t.setAttribute("x",PAD+c*S-S/2);t.setAttribute("y",PAD+r*S-S/2);
       t.setAttribute("width",S);t.setAttribute("height",S);t.setAttribute("fill","transparent");
       t.style.cursor= s.over?"default":"pointer"; t.addEventListener("click",()=>onClick(i));
+      t.addEventListener("mouseenter",()=>showGhost(i));
+      t.addEventListener("mouseleave",hideGhost);
       layer.appendChild(t);}
     // meta
     document.getElementById("rb").textContent=s.reserve[0];
@@ -442,7 +459,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   }
   // apply a move; track last point + flash any captured stones. returns false if illegal.
   function doMove(move){
-    const before=s.board;
+    const before=s.board, mover=s.toMove;
     const ns=Hoshi.apply(s,move);
     if(ns===null) return false;
     const caps=[];
@@ -451,9 +468,40 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       lastMove=move.i;
     } else { lastMove=null; }
     hist.push(s); s=ns; moveSeq++;
+    if(move.type!=='pass') placeRipple(move.i, mover===0?"var(--blue)":"var(--red)");
     flashCaptures(caps);
     return true;
   }
+  // expanding ring when a stone lands (motion cue)
+  function placeRipple(i,color){
+    const[r,c]=Hoshi.rc(s.N,i);
+    const ring=document.createElementNS(SVGNS,"circle");
+    ring.setAttribute("cx",PAD+c*S);ring.setAttribute("cy",PAD+r*S);ring.setAttribute("r",S*0.18);
+    ring.setAttribute("fill","none");ring.setAttribute("stroke",color);ring.setAttribute("stroke-width","2.5");
+    ring.setAttribute("opacity","0.7");ring.style.transition="opacity .45s ease, r .45s ease, stroke-width .45s ease";
+    fxLayer.appendChild(ring);
+    requestAnimationFrame(()=>{ring.setAttribute("r",S*0.5);ring.setAttribute("opacity","0");ring.setAttribute("stroke-width","0.5");});
+    setTimeout(()=>ring.remove(),520);
+  }
+  // translucent preview of the move under the cursor (desktop)
+  function showGhost(i){
+    if(s.over || players[s.toMove]==='cpu') return;
+    ghostLayer.innerHTML="";
+    const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
+    if(Hoshi.apply(s,move)===null) return;   // not a legal placement here
+    const[r,c]=Hoshi.rc(s.N,i), x=PAD+c*S, y=PAD+r*S, col=s.toMove===0?"var(--blue)":"var(--red)";
+    let el;
+    if(mode==='trooper'){
+      const pts=[]; for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5, rad=(k%2?0.45:1)*S*0.42;
+        pts.push((x+rad*Math.cos(a))+","+(y+rad*Math.sin(a)));}
+      el=document.createElementNS(SVGNS,"polygon"); el.setAttribute("points",pts.join(" "));
+    } else {
+      el=document.createElementNS(SVGNS,"circle"); el.setAttribute("cx",x);el.setAttribute("cy",y);el.setAttribute("r",S*0.24);
+    }
+    el.setAttribute("fill",col); el.setAttribute("opacity","0.38"); el.setAttribute("class","ghost");
+    ghostLayer.appendChild(el);
+  }
+  function hideGhost(){ ghostLayer.innerHTML=""; }
   function flashCaptures(caps){
     for(const {i,c} of caps){
       const[r,col]=Hoshi.rc(s.N,i);
@@ -471,6 +519,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       rad=k%2?R*0.45:R; pts.push((x+rad*Math.cos(ang))+","+(y+rad*Math.sin(ang)));}
     const p=document.createElementNS(SVGNS,"polygon");
     p.setAttribute("points",pts.join(" "));p.setAttribute("fill",fill);
+    p.setAttribute("filter","url(#sh)");
     if(dim)p.setAttribute("opacity","0.55"); // not-yet-ready trooper looks faded
     layer.appendChild(p);
   }

@@ -101,7 +101,8 @@
     <option value="hotseat">2 players (hot-seat)</option>
     <option value="vscpu">vs Computer (you are Blue)</option>
     <option value="cpucpu">Watch: Computer vs Computer</option>
-    <option value="bylink">Play by link (online)</option>
+    <option value="bylink">Play by link (paste)</option>
+    <option value="online">Play online (live)</option>
   </select>
   <select id="diff" title="Computer strength (Medium/Hard use MCTS search)">
     <option value="easy">Easy</option>
@@ -126,8 +127,8 @@
 
 <div class="modal" id="handoffModal">
   <div class="modal-card" style="text-align:center;max-width:420px">
-    <h2 style="font-size:20px;letter-spacing:.04em;margin:2px 0 6px">Your move is in</h2>
-    <p style="color:var(--muted);margin:0 0 4px">Send this link to your opponent — they open
+    <h2 id="handoffTitle" style="font-size:20px;letter-spacing:.04em;margin:2px 0 6px">Your move is in</h2>
+    <p id="handoffMsg" style="color:var(--muted);margin:0 0 4px">Send this link to your opponent — they open
        it to take their turn, then send one back.</p>
     <input id="handoffLink" readonly onclick="this.select()">
     <div style="display:flex;gap:10px;justify-content:center">
@@ -290,6 +291,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   let lastMove=null;                           // last point played (for the marker)
   let winShown=false;                          // ensures the win popup fires once per game
   let awaitingHandoff=false;                    // play-by-link: locked until opponent's link
+  let online=null;                              // Tier 1 online session: {gameId,seat,token,invite?}
 
   const hoshiPoints=(N)=>{ // star points (homage); 9-dot pattern scaled
     const a=N>=13?3:2, m=Math.floor(N/2), z=N-1-a;
@@ -302,8 +304,12 @@ if(typeof module!=='undefined') module.exports=Bot;
     const N=+document.getElementById("size").value;
     const variant=document.getElementById("variant").value;
     const md=document.getElementById("mode").value;
-    players = md==='vscpu' ? ['human','cpu'] : md==='cpucpu' ? ['cpu','cpu'] : ['human','human'];
     persistSettings();
+    if(md==='online'){ createOnline(N,variant); return; }   // online has its own async setup
+    if(online || location.hash.startsWith("#o=")){          // leaving an online game
+      clearOnline(); history.replaceState(null,"",location.pathname+location.search);
+    }
+    players = md==='vscpu' ? ['human','cpu'] : md==='cpucpu' ? ['cpu','cpu'] : ['human','human'];
     s=Hoshi.newState(N,variant); hist=[]; mode='trooper'; lastMove=null; awaitingHandoff=false; moveSeq++;
     buildBoard(); render(); scheduleBot();
   }
@@ -495,7 +501,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   }
   // translucent preview of the move under the cursor (desktop)
   function showGhost(i){
-    if(s.over || players[s.toMove]==='cpu') return;
+    if(s.over || players[s.toMove]==='cpu' || (online && s.toMove!==online.seat)) return;
     ghostLayer.innerHTML="";
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
     if(Hoshi.apply(s,move)===null) return;   // not a legal placement here
@@ -536,10 +542,12 @@ if(typeof module!=='undefined') module.exports=Bot;
 
   function onClick(i){
     if(s.over || awaitingHandoff || players[s.toMove]==='cpu') return;  // locked / bot's turn
+    if(online && s.toMove!==online.seat) return;                       // not your seat
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
     if(!doMove(move)){ flash(i); return; }
     if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
     render();
+    if(online){ submitOnlineMove(move); return; }
     if(document.getElementById("mode").value==="bylink"){ if(!s.over) offerHandoff(); }
     else scheduleBot();
   }
@@ -564,6 +572,10 @@ if(typeof module!=='undefined') module.exports=Bot;
       return;
     }
     if(awaitingHandoff){ el.innerHTML=`Move made — send the link to your opponent to continue.`; return; }
+    if(online && s.toMove!==online.seat){
+      const odot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
+      el.innerHTML=`${odot}Opponent's turn — reload the page to see their move.`; return;
+    }
     const who=s.toMove===0?"Blue":"Red";
     const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
     if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
@@ -624,20 +636,88 @@ if(typeof module!=='undefined') module.exports=Bot;
       navigator.clipboard.writeText(text).then(()=>toast("Link copied"),()=>prompt("Copy this link:",text));
     else prompt("Copy this link:",text);
   }
-  function shareLink(){ copyToClipboard(linkFor(document.getElementById("mode").value==="bylink")); }
+  function shareLink(){
+    if(online){ if(online.invite) copyToClipboard(online.invite);
+                else toast("Only the game's creator has an invite link"); return; }
+    copyToClipboard(linkFor(document.getElementById("mode").value==="bylink"));
+  }
   // play-by-link: after your move, lock the board and surface a link to send
   function offerHandoff(){
     awaitingHandoff=true;
+    document.getElementById("handoffTitle").textContent="Your move is in";
+    document.getElementById("handoffMsg").textContent="Send this link to your opponent — they open it to take their turn, then send one back.";
     document.getElementById("handoffLink").value=linkFor(true);
     document.getElementById("handoffModal").classList.add("show");
   }
   let toastTimer;
   function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
     clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1600); }
+  // --- Tier 1 online (Supabase). Source of truth is the server: games.initial_state
+  //     (replay root) + an append-only moves log. We replay it through Hoshi.apply.
+  //     Phase 3: create/join via capability links; reload to pull the opponent's
+  //     move. (Phase 4 swaps the reload for a realtime subscription.) ---
+  function onlineLink(gameId,seat,token){ return location.href.split("#")[0]+"#o="+gameId+":"+seat+":"+token; }
+  function saveOnline(){ try{ localStorage.setItem("hoshi_online",JSON.stringify(online)); }catch(e){} }
+  function loadStoredOnline(){ try{ return JSON.parse(localStorage.getItem("hoshi_online")||"null"); }catch(e){ return null; } }
+  function clearOnline(){ try{ localStorage.removeItem("hoshi_online"); }catch(e){} online=null; }
+  function showInvite(link){
+    document.getElementById("handoffTitle").textContent="Online game created";
+    document.getElementById("handoffMsg").textContent="Send this link to invite your opponent. You're Blue — make the first move.";
+    document.getElementById("handoffLink").value=link;
+    document.getElementById("handoffModal").classList.add("show");
+  }
+  async function createOnline(N,variant){
+    if(!hoshiDB){ toast("Online isn't configured"); document.getElementById("mode").value="hotseat"; start(); return; }
+    const st=Hoshi.newState(N,variant);
+    try{
+      const {data,error}=await hoshiDB.rpc("create_game",
+        {p_initial_state:stateToObj(st), p_board_n:N, p_variant0:variant, p_variant1:variant});
+      if(error) throw error;
+      const {game_id,blue_token,red_token}=data[0];
+      online={gameId:game_id, seat:0, token:blue_token, invite:onlineLink(game_id,1,red_token)};
+      saveOnline();
+      players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
+      history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);  // no token in the bar
+      buildBoard(); render(); showInvite(online.invite);
+    }catch(e){ console.error(e); toast("Couldn't create the online game"); }
+  }
+  async function refreshOnline(){     // pull the server's move log and replay it
+    if(!hoshiDB || !online) return false;
+    try{
+      const g=await hoshiDB.from("games").select("initial_state,status,winner").eq("id",online.gameId).single();
+      if(g.error) throw g.error;
+      const mv=await hoshiDB.from("moves").select("ply,move").eq("game_id",online.gameId).order("ply");
+      if(mv.error) throw mv.error;
+      let st=stateFromObj(g.data.initial_state);
+      for(const row of mv.data){ const ns=Hoshi.apply(st,row.move); if(ns) st=ns; }
+      players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
+      buildBoard(); render(); return true;
+    }catch(e){ console.error(e); toast("Sync failed"); return false; }
+  }
+  async function submitOnlineMove(move){
+    if(!hoshiDB || !online) return;
+    const {error}=await hoshiDB.rpc("submit_move",
+      {p_game_id:online.gameId, p_seat_token:online.token, p_move:move});
+    if(error){                         // rejected (not your turn / over) → roll back the local move
+      toast(error.message||"Move rejected");
+      if(hist.length){ s=hist.pop(); moveSeq++; lastMove=null; render(); }
+    }
+  }
+
   function init(){
     restoreSettings();
     initWorker();
     const h=location.hash;
+    if(h.startsWith("#o=")){                       // online: invite link or resume
+      const parts=h.slice(3).split(":");           // gameId[:seat:token]
+      if(parts.length>=3){                          // invited — capture seat+token, hide them
+        online={gameId:parts[0], seat:+parts[1], token:parts[2]}; saveOnline();
+        history.replaceState(null,"",location.pathname+location.search+"#o="+parts[0]);
+        document.getElementById("mode").value="online"; refreshOnline(); return;
+      }
+      const st=loadStoredOnline();                 // bare #o=gameId — resume this browser's seat
+      if(st && st.gameId===parts[0]){ online=st; document.getElementById("mode").value="online"; refreshOnline(); return; }
+    }
     if(h.startsWith("#g=")){ try{ loadPayload(decodeShare(h.slice(3))); toast("Loaded shared game"); return; }catch(e){} }
     try{ const saved=localStorage.getItem("hoshi_save");
       if(saved){ const o=JSON.parse(saved); if(o&&o.st&&!o.st.over){ loadPayload(o); toast("Resumed your game"); return; } } }catch(e){}
@@ -649,9 +729,12 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
   document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
   document.getElementById("pass").onclick=()=>{ if(s.over||awaitingHandoff||players[s.toMove]==='cpu')return;
+    if(online && s.toMove!==online.seat) return;
     doMove({type:'pass'}); render();
+    if(online){ submitOnlineMove({type:'pass'}); return; }
     if(document.getElementById("mode").value!=="bylink") scheduleBot(); };  // ending shows the win popup
-  document.getElementById("undo").onclick=()=>{ if(!hist.length)return;
+  document.getElementById("undo").onclick=()=>{ if(online){ toast("Undo isn't available online"); return; }
+    if(!hist.length)return;
     s=hist.pop();
     while(hist.length && players[s.toMove]==='cpu') s=hist.pop();  // back to your own turn
     moveSeq++; lastMove=null; awaitingHandoff=false;               // allow redoing a not-yet-sent move

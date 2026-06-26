@@ -355,7 +355,9 @@ const Bot = (function(){
   function reward(winner,p){ return winner===p?1 : (winner===-1?0.5:0); }
   function shortlist(state,width){
     const me=state.toMove, scored=[];
+    const filled=state.board.filter(Boolean).length/(state.N*state.N);
     for(const m of Hoshi.legalMoves(state)){
+      if(m.type==='pass' && filled<0.92) continue;   // don't end the game while there's play left
       const ns=Hoshi.apply(state,m); if(ns===null) continue;
       scored.push([evaluate(ns,me)+Math.random()*1e-6, m]);
     }

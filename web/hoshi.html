@@ -86,7 +86,12 @@ const Hoshi = (function(){
     // Too sparse (ratio >>2.5) and zones stop overlapping: the game decomposes
     // into two solitaires and the capture win-path dies. 9->4, 13->6.
     const R = Math.max(3, Math.round(N/2.3));
-    return { N, R, troopers:5, captureToWin:3 };
+    return { N, R, troopers:5, captureToWin:3, maxPlies:N*N*4 };
+  }
+  // positional-superko key: full board layout + whose turn it is to play next
+  function posKey(board, toMove){
+    let s=''; for(const c of board) s += c ? (''+c.c+c.k) : '_';
+    return s+'|'+toMove;
   }
   // Setup variants are a "hidden rule" (just a starting position) — they add no
   // rules to learn but are the game's main source of strategic variety: how many
@@ -125,10 +130,10 @@ const Hoshi = (function(){
   function legalTrooper(s,i){ return s.board[i]==null && s.reserve[s.toMove]>0; }
 
   function clone(s){
-    return {N:s.N,R:s.R,troopers:s.troopers,captureToWin:s.captureToWin,
+    return {N:s.N,R:s.R,troopers:s.troopers,captureToWin:s.captureToWin,maxPlies:s.maxPlies,
       board:s.board.map(x=>x?{c:x.c,k:x.k}:null),
       reserve:[...s.reserve], lostTroopers:[...s.lostTroopers],
-      placedPly:Object.assign({},s.placedPly),
+      placedPly:Object.assign({},s.placedPly), history:new Set(s.history),
       toMove:s.toMove, ply:s.ply, passes:s.passes, over:s.over, winner:s.winner};
   }
 
@@ -173,11 +178,17 @@ const Hoshi = (function(){
     // suicide
     const {libs}=groupLib(ns.N,ns.board,i);
     if(libs===0 && dead.size===0)return null;
+    // positional superko: a move may not recreate a previous position (stops
+    // endless capture/recapture cycles). Pass moves are exempt.
+    const key=posKey(ns.board, me^1);
+    if(ns.history.has(key)) return null;
+    ns.history.add(key);
     // bookkeeping
     if(move.type==='trooper'){ ns.reserve[me]--; ns.placedPly[i]=ns.ply; }
     ns.passes=0;
     if(ns.lostTroopers[1-me]>=ns.captureToWin){ ns.over=true; ns.winner=me; }
     ns.toMove^=1; ns.ply++;
+    if(!ns.over && ns.ply>=ns.maxPlies) endTerritory(ns);   // safety cap -> score
     return ns;
   }
 
@@ -193,7 +204,7 @@ const Hoshi = (function(){
     const cfg=makeConfig(N);
     const s={...cfg, board:new Array(N*N).fill(null),
       reserve:[cfg.troopers,cfg.troopers], lostTroopers:[0,0], placedPly:{},
-      toMove:0, ply:0, passes:0, over:false, winner:null};
+      history:new Set(), toMove:0, ply:0, passes:0, over:false, winner:null};
     const home = (variant in SETUP_HOME) ? SETUP_HOME[variant] : 2;
     for(const color of [0,1]){
       let pts=[];
@@ -206,6 +217,7 @@ const Hoshi = (function(){
       for(const i of pts){ if(s.board[i]!=null)continue;
         s.board[i]={c:color,k:'T'}; s.reserve[color]--; s.placedPly[i]=-10; }
     }
+    s.history.add(posKey(s.board, 0));   // seed: the opening position can't recur
     return s;
   }
 
@@ -257,13 +269,17 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   }
   function botMove(st){
     const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
-    let best=null, bestM={type:'pass'};
+    let best=null, bestM={type:'pass'}, canCapture=false;
     for(const m of Hoshi.legalMoves(st)){
-      if(m.type==='pass' && filled<0.92) continue;   // pass only to settle territory
+      if(m.type==='pass' && filled<0.92) continue;   // pass to settle territory once full
       const ns=Hoshi.apply(st,m); if(ns===null) continue;
+      if(m.type!=='pass' && ns.lostTroopers[1-me]>st.lostTroopers[1-me]) canCapture=true;
       const v=evaluate(ns,me)+Math.random()*0.01;
       if(best===null || v>best){best=v; bestM=m;}
     }
+    // agree to end a settled game: if the opponent just passed and we have no
+    // capture to make, pass back so two passes can score the territory.
+    if(st.passes===1 && !canCapture) return {type:'pass'};
     return bestM;
   }
   function scheduleBot(){
@@ -452,11 +468,18 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     const who=s.toMove===0?"Blue":"Red";
     const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
     if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
+    if(Hoshi.legalMoves(s).length===1){   // only pass is available
+      el.innerHTML=`${dot}${who} has no moves left — press <b>Pass</b>${s.passes===1?' to score the game':''}.`;
+      return;
+    }
     const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
     let line=`${dot}${who} to move — ${act}.`;
+    const filled = s.board.filter(Boolean).length/(s.N*s.N);
     if(s.passes===1){               // opponent just passed: one more pass ends the game
       const lead = sc[0]===sc[1]?"tied":(sc[0]>sc[1]?"Blue ahead":"Red ahead");
       line += ` <span class="warn">Pass again to END the game — ${lead} ${sc[0]}–${sc[1]}.</span>`;
+    } else if(filled>0.6){
+      line += ` <span style="color:var(--muted)">· or Pass to score if you're done.</span>`;
     }
     el.innerHTML=line;
   }

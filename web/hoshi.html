@@ -116,6 +116,17 @@
 
 <div id="toast"></div>
 
+<div class="modal" id="winModal">
+  <div class="modal-card" style="text-align:center;max-width:380px">
+    <div id="winTitle" style="font-size:26px;font-weight:700;letter-spacing:.04em;margin:4px 0 6px"></div>
+    <div id="winDetail" style="color:var(--muted);font-size:15px;margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="winNew">New game</button>
+      <button id="winClose">View board</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="rules">
   <div class="modal-card">
     <button class="close" id="rulesClose" aria-label="close">&times;</button>
@@ -296,6 +307,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   let s, mode='trooper', hist=[];
   let players=['human','human'], moveSeq=0;   // moveSeq invalidates stale bot timeouts
   let lastMove=null;                           // last point played (for the marker)
+  let winShown=false;                          // ensures the win popup fires once per game
 
   const hoshiPoints=(N)=>{ // star points (homage); 9-dot pattern scaled
     const a=N>=13?3:2, m=Math.floor(N/2), z=N-1-a;
@@ -450,6 +462,8 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       ` &nbsp;&ndash;&nbsp; <span class="dot" style="background:var(--red)"></span><b>${sc[1]}</b>`;
     status();
     persist();
+    if(s.over){ if(!winShown){ winShown=true; showWin(); } }
+    else { winShown=false; hideWin(); }
   }
   // owner[i] = 0/1 for an empty point fully enclosed by one color, else null
   function territoryMap(st){
@@ -624,7 +638,26 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();showRules();};
   document.getElementById("rulesClose").onclick=hideRules;
   rulesModal.addEventListener("click",e=>{ if(e.target===rulesModal) hideRules(); });
-  document.addEventListener("keydown",e=>{ if(e.key==="Escape") hideRules(); });
+
+  // win popup (unmissable result when the game ends)
+  const winModal=document.getElementById("winModal");
+  function showWin(){
+    const sc=Hoshi.areaScore(s);
+    const t=document.getElementById("winTitle"), d=document.getElementById("winDetail");
+    if(s.winner===-1){ t.textContent="Draw"; t.style.color="var(--ink)";
+      d.textContent=`Territory tied ${sc[0]}–${sc[1]}.`; }
+    else { const who=s.winner===0?"Blue":"Red";
+      const byCap=s.lostTroopers[1-s.winner]>=s.captureToWin;
+      t.textContent=`${who} wins`; t.style.color=s.winner===0?"var(--blue)":"var(--red)";
+      d.textContent = byCap ? `by decapitation — captured ${s.captureToWin} troopers.`
+                            : `by territory — ${sc[0]}–${sc[1]} (+${Math.abs(sc[0]-sc[1])}).`; }
+    winModal.classList.add("show");
+  }
+  const hideWin=()=>winModal.classList.remove("show");
+  document.getElementById("winNew").onclick=()=>{ hideWin(); start(); };
+  document.getElementById("winClose").onclick=hideWin;
+  winModal.addEventListener("click",e=>{ if(e.target===winModal) hideWin(); });
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ hideRules(); hideWin(); } });
   // first visit: open the rules once so new players aren't dropped in cold
   try{ if(!localStorage.getItem("hoshi_seen")){ showRules(); localStorage.setItem("hoshi_seen","1"); } }catch(e){}
 

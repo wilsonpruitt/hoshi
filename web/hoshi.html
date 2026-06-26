@@ -713,9 +713,31 @@ if(typeof module!=='undefined') module.exports=Bot;
   function stateFromObj(o){ return {...o, history:new Set(o.history)}; }
   function persist(){ try{ localStorage.setItem("hoshi_save",
     JSON.stringify({st:stateToObj(s), players})); }catch(e){} }
-  function encodePayload(pvp){ return encodeURIComponent(btoa(JSON.stringify(
-    {st:stateToObj(s), players, pvp:!!pvp}))); }
-  function linkFor(pvp){ return location.href.split("#")[0]+"#g="+encodePayload(pvp); }
+  // Compact share codec — keeps links short enough to text. One char per cell;
+  // omits the superko history (reseeds empty) and placedPly (every trooper is
+  // ready at a turn boundary, which is what a shared position always is).
+  function encodeShare(pvp){
+    let board=''; for(const b of s.board)
+      board += b==null ? '.' : (b.c===0 ? (b.k==='T'?'a':'b') : (b.k==='T'?'c':'d'));
+    return [s.N, s.toMove, s.reserve[0], s.reserve[1],
+            s.lostTroopers[0], s.lostTroopers[1], s.ply, pvp?1:0].join('-') + '~' + board;
+  }
+  function decodeShare(str){
+    if(!str.includes('~')) return JSON.parse(atob(decodeURIComponent(str)));   // legacy base64 link
+    const [hh,board]=str.split('~');
+    const [N,toMove,r0,r1,l0,l1,ply,pvp]=hh.split('-').map(Number);
+    const cfg=Hoshi.makeConfig(N);
+    const st={...cfg, board:new Array(N*N).fill(null), reserve:[r0,r1],
+      lostTroopers:[l0,l1], placedPly:{}, history:new Set(),
+      toMove, ply, passes:0, over:false, winner:null};
+    const map={a:[0,'T'],b:[0,'D'],c:[1,'T'],d:[1,'D']};
+    for(let i=0;i<board.length;i++){ const m=map[board[i]]; if(!m)continue;
+      st.board[i]={c:m[0],k:m[1]}; st.placedPly[i]=-10; }
+    if(l0>=cfg.captureToWin){ st.over=true; st.winner=1; }       // recover a decap result
+    else if(l1>=cfg.captureToWin){ st.over=true; st.winner=0; }
+    return {st, pvp:pvp===1};
+  }
+  function linkFor(pvp){ return location.href.split("#")[0]+"#g="+encodeShare(pvp); }
   function loadPayload(o){
     s=stateFromObj(o.st); players=o.players||["human","human"];
     hist=[]; lastMove=null; mode='trooper'; awaitingHandoff=false; moveSeq++;
@@ -741,7 +763,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     restoreSettings();
     initWorker();
     const h=location.hash;
-    if(h.startsWith("#g=")){ try{ loadPayload(JSON.parse(atob(decodeURIComponent(h.slice(3))))); toast("Loaded shared game"); return; }catch(e){} }
+    if(h.startsWith("#g=")){ try{ loadPayload(decodeShare(h.slice(3))); toast("Loaded shared game"); return; }catch(e){} }
     try{ const saved=localStorage.getItem("hoshi_save");
       if(saved){ const o=JSON.parse(saved); if(o&&o.st&&!o.st.over){ loadPayload(o); toast("Resumed your game"); return; } } }catch(e){}
     start();

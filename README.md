@@ -8,10 +8,13 @@ troopers) or **territory** (area score after two passes).
 This repo has two halves:
 
 ## 1. The playable game — `web/hoshi.html`
-A single, self-contained HTML file. **Open it in a browser to play** (hot-seat,
-two players). Place troopers, deploy drones in the lit zone (tinted to the
-active player), capture by surrounding groups, race the two win paths. Pick a
-board size and a setup variant from the controls.
+**Live at https://hoshi.wrootlabs.com** (deployed on Vercel from `web/`).
+
+A single, self-contained HTML file. **Open it in a browser to play** — vs the
+computer, hot-seat two players, or watch Computer vs Computer. Place troopers,
+deploy drones in the lit zone (tinted to the active player), capture by
+surrounding groups, race the two win paths. Pick a board size and a setup
+variant from the controls; games auto-save and a single "End & score" finishes.
 
 ```
 node web/test_rules.js     # checks the game's rules engine (no browser needed)

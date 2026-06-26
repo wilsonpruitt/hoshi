@@ -100,6 +100,11 @@
     <option value="vscpu">vs Computer (you are Blue)</option>
     <option value="cpucpu">Watch: Computer vs Computer</option>
   </select>
+  <select id="diff" title="Computer strength (Medium/Hard use MCTS search)">
+    <option value="easy">Easy</option>
+    <option value="medium" selected>Medium</option>
+    <option value="hard">Hard</option>
+  </select>
   <select id="size">
     <option value="9">9 &times; 9 (faster)</option>
     <option value="13">13 &times; 13</option>
@@ -152,7 +157,7 @@
 </div>
 
 <!-- ===RULES_START===  (pure, DOM-free; node test extracts this block) -->
-<script>
+<script id="hoshi-rules">
 const Hoshi = (function(){
   function makeConfig(N){
     // Drone range tuned to keep board/range ~2.3 — the validated balance ratio.
@@ -300,6 +305,98 @@ if(typeof module!=='undefined') module.exports=Hoshi;
 </script>
 <!-- ===RULES_END=== -->
 
+<!-- Bot kernel: DOM-free eval + greedy + MCTS. Runs both on the main thread and
+     inside the Web Worker (its text is read and injected into the worker blob). -->
+<script id="bot-kernel">
+const Bot = (function(){
+  // greedy static eval (mirrors the Python GreedyPlayer): capture pressure
+  // dominates, then board presence, minus own-trooper atari risk.
+  function evaluate(st, me){
+    if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
+    const opp=1-me, stones=[0,0];
+    for(const b of st.board) if(b) stones[b.c]++;
+    let atari=0; const seen=new Set();
+    for(let i=0;i<st.board.length;i++){const b=st.board[i];
+      if(b && b.c===me && b.k==='T' && !seen.has(i)){
+        const {group,libs}=Hoshi.groupLib(st.N,st.board,i);
+        group.forEach(g=>seen.add(g));
+        if(libs<=1) atari++;
+      }}
+    return 30*(st.lostTroopers[opp]-st.lostTroopers[me]) + (stones[me]-stones[opp]) - 4*atari;
+  }
+  function botMove(st){          // 1-ply greedy (the "Easy" bot)
+    const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
+    let best=null, bestM={type:'pass'};
+    for(const m of Hoshi.legalMoves(st)){
+      if(m.type==='pass' && filled<0.92) continue;
+      const ns=Hoshi.apply(st,m); if(ns===null) continue;
+      const v=evaluate(ns,me)+Math.random()*0.01;
+      if(best===null || v>best){best=v; bestM=m;}
+    }
+    return bestM;
+  }
+  // MCTS (UCT) with a 1-ply greedy shortlist + fast rollouts + eval fallback.
+  function reward(winner,p){ return winner===p?1 : (winner===-1?0.5:0); }
+  function shortlist(state,width){
+    const me=state.toMove, scored=[];
+    for(const m of Hoshi.legalMoves(state)){
+      const ns=Hoshi.apply(state,m); if(ns===null) continue;
+      scored.push([evaluate(ns,me)+Math.random()*1e-6, m]);
+    }
+    if(!scored.length) return [{type:'pass'}];
+    scored.sort((a,b)=>a[0]-b[0]);          // ascending; pop() yields the best first
+    return scored.slice(-width).map(x=>x[1]);
+  }
+  function rollout(state,depthCap){
+    let s2={...state, history:new Set()}, depth=0;   // superko off (throwaway, bounded)
+    while(!s2.over && depth<depthCap){
+      const N=s2.N, me=s2.toMove, empt=[];
+      for(let i=0;i<N*N;i++) if(s2.board[i]==null) empt.push(i);
+      for(let i=empt.length-1;i>0;i--){const j=(Math.random()*(i+1))|0; const t=empt[i];empt[i]=empt[j];empt[j]=t;}
+      const ready=Hoshi.readyTroopers(s2,me), canDrop=s2.reserve[me]>0;
+      let next=null, tried=0;
+      for(const pt of empt){
+        if(ready.length && Hoshi.legalDrone(s2,pt)){ const ns=Hoshi.apply(s2,{type:'drone',i:pt}); if(ns){next=ns;break;} }
+        if(canDrop){ const ns=Hoshi.apply(s2,{type:'trooper',i:pt}); if(ns){next=ns;break;} }
+        if(++tried>=24) break;
+      }
+      s2 = next || Hoshi.apply(s2,{type:'pass'});
+      depth++;
+    }
+    if(s2.over) return s2.winner;
+    const v=evaluate(s2,0); return v>0?0:(v<0?1:-1);
+  }
+  function mctsMove(root,sims,width,depthCap){
+    const C=1.4;
+    const rootNode={state:root,parent:null,move:null,mover:null,children:[],untried:null,N:0,W:0};
+    for(let n=0;n<sims;n++){
+      let node=rootNode;
+      while(true){
+        if(node.state.over) break;
+        if(node.untried===null) node.untried=shortlist(node.state,width);
+        if(node.untried.length){
+          const m=node.untried.pop();
+          const child={state:Hoshi.apply(node.state,m),parent:node,move:m,mover:node.state.toMove,children:[],untried:null,N:0,W:0};
+          node.children.push(child); node=child; break;
+        }
+        const logN=Math.log(node.N||1); let best=null,bv=-1;
+        for(const c of node.children){
+          const v=(c.N?c.W/c.N:0)+(c.N?C*Math.sqrt(logN/c.N):Infinity);
+          if(v>bv){bv=v;best=c;}
+        }
+        node=best;
+      }
+      const winner=rollout(node.state,depthCap);
+      for(let nd=node; nd; nd=nd.parent){ nd.N++; if(nd.mover!=null) nd.W+=reward(winner,nd.mover); }
+    }
+    let best=null; for(const c of rootNode.children) if(!best||c.N>best.N) best=c;
+    return best ? best.move : {type:'pass'};
+  }
+  return {evaluate, botMove, mctsMove};
+})();
+if(typeof module!=='undefined') module.exports=Bot;
+</script>
+
 <script>
 (function(){
   const SVGNS="http://www.w3.org/2000/svg";
@@ -326,40 +423,38 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     buildBoard(); render(); scheduleBot();
   }
 
-  // --- greedy AI opponent (Phase 1): mirrors the Python GreedyPlayer eval ---
-  function evaluate(st, me){
-    if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
-    const opp=1-me, stones=[0,0];
-    for(const b of st.board) if(b) stones[b.c]++;
-    // capture pressure dominates; then board presence; penalize own troopers in atari
-    let atari=0; const seen=new Set();
-    for(let i=0;i<st.board.length;i++){const b=st.board[i];
-      if(b && b.c===me && b.k==='T' && !seen.has(i)){
-        const {group,libs}=Hoshi.groupLib(st.N,st.board,i);
-        group.forEach(g=>seen.add(g));
-        if(libs<=1) atari++;
-      }}
-    return 30*(st.lostTroopers[opp]-st.lostTroopers[me]) + (stones[me]-stones[opp]) - 4*atari;
+  // --- AI opponent: the bot kernel (Bot.*) runs in a Web Worker off the UI
+  //     thread. Falls back to running synchronously if a worker can't be made
+  //     (e.g. blob workers blocked on file://). Difficulty sets the sim budget. ---
+  let worker=null;
+  function simsForDifficulty(){
+    const d=document.getElementById("diff").value;
+    return d==='easy' ? 0 : d==='hard' ? 140 : 55;   // Easy=greedy, Medium/Hard=MCTS sims
   }
-  function botMove(st){
-    const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
-    let best=null, bestM={type:'pass'};
-    for(const m of Hoshi.legalMoves(st)){
-      if(m.type==='pass' && filled<0.92) continue;   // only end the game once it has settled
-      const ns=Hoshi.apply(st,m); if(ns===null) continue;
-      const v=evaluate(ns,me)+Math.random()*0.01;
-      if(best===null || v>best){best=v; bestM=m;}
-    }
-    return bestM;
+  function applyBotMove(mv,seq){
+    if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;   // stale (undo/new/etc.)
+    doMove(mv); render(); scheduleBot();              // chain (also drives CPU vs CPU)
+  }
+  function initWorker(){
+    try{
+      const src = document.getElementById("hoshi-rules").textContent + "\n"
+        + document.getElementById("bot-kernel").textContent + "\n"
+        + "onmessage=function(e){var d=e.data;"
+        + "var mv=d.sims>0?Bot.mctsMove(d.state,d.sims,8,d.depthCap):Bot.botMove(d.state);"
+        + "postMessage({move:mv,seq:d.seq});};";
+      worker=new Worker(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
+      worker.onmessage=(e)=>applyBotMove(e.data.move,e.data.seq);
+      worker.onerror=()=>{ worker=null; };
+    }catch(e){ worker=null; }
   }
   function scheduleBot(){
     if(s.over || players[s.toMove]!=='cpu') return;
-    const seq=moveSeq;
-    setTimeout(()=>{
-      if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;  // stale / changed
-      doMove(botMove(s));
-      render(); scheduleBot();   // chain (handles Computer vs Computer)
-    }, 350);
+    const seq=moveSeq, sims=simsForDifficulty(), depthCap=s.N>=13?28:36;
+    if(worker){ worker.postMessage({state:s, sims, depthCap, seq}); return; }
+    setTimeout(()=>{   // synchronous fallback
+      if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;
+      applyBotMove(sims>0 ? Bot.mctsMove(s,sims,8,depthCap) : Bot.botMove(s), seq);
+    }, 40);
   }
 
   let S, PAD; // pixel spacing, padding
@@ -589,7 +684,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   }
 
   // --- Phase 6: persistence & sharing ---
-  const cfgKeys=["mode","size","variant"];
+  const cfgKeys=["mode","size","variant","diff"];
   function persistSettings(){ try{ const c={}; cfgKeys.forEach(k=>c[k]=document.getElementById(k).value);
     localStorage.setItem("hoshi_cfg",JSON.stringify(c)); }catch(e){} }
   function restoreSettings(){ try{ const c=JSON.parse(localStorage.getItem("hoshi_cfg")||"{}");
@@ -611,6 +706,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
     clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1600); }
   function init(){
     restoreSettings();
+    initWorker();
     const h=location.hash;
     if(h.startsWith("#g=")){ try{ loadPayload(JSON.parse(atob(decodeURIComponent(h.slice(3))))); toast("Loaded shared game"); return; }catch(e){} }
     try{ const saved=localStorage.getItem("hoshi_save");
@@ -632,6 +728,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   document.getElementById("mode").onchange=start;
   document.getElementById("size").onchange=start;
   document.getElementById("variant").onchange=start;
+  document.getElementById("diff").onchange=persistSettings;
   const rulesModal=document.getElementById("rules");
   const showRules=()=>rulesModal.classList.add("show");
   const hideRules=()=>rulesModal.classList.remove("show");

@@ -7,10 +7,15 @@ const fs = require('fs');
 const path = require('path');
 
 const html = fs.readFileSync(path.join(__dirname, 'hoshi.html'), 'utf8');
-const seg = html.split('===RULES_START===')[1].split('===RULES_END===')[0];
-const blk = seg.substring(seg.indexOf('<script>') + 8, seg.lastIndexOf('</script>'));
+// extract a <script id="..."> block by its id (tolerates attributes on the tag)
+function scriptById(id) {
+  const open = html.indexOf(`<script id="${id}"`);
+  const start = html.indexOf('>', open) + 1;
+  const end = html.indexOf('</script>', start);
+  return html.slice(start, end);
+}
 const mod = { exports: {} };
-new Function('module', 'exports', blk)(mod, mod.exports);
+new Function('module', 'exports', scriptById('hoshi-rules'))(mod, mod.exports);
 const H = mod.exports;
 
 let ok = 0, fail = 0;

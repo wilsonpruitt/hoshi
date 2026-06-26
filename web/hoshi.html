@@ -54,6 +54,11 @@
   <button id="pass">Pass</button>
   <button id="undo">Undo</button>
   <button id="new">New game</button>
+  <select id="mode" title="Who controls each side">
+    <option value="hotseat">2 players (hot-seat)</option>
+    <option value="vscpu">vs Computer (you are Blue)</option>
+    <option value="cpucpu">Watch: Computer vs Computer</option>
+  </select>
   <select id="size">
     <option value="9">9 &times; 9 (faster)</option>
     <option value="13">13 &times; 13</option>
@@ -211,6 +216,7 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   const SVGNS="http://www.w3.org/2000/svg";
   const board=document.getElementById("board");
   let s, mode='trooper', hist=[];
+  let players=['human','human'], moveSeq=0;   // moveSeq invalidates stale bot timeouts
 
   const hoshiPoints=(N)=>{ // star points (homage); 9-dot pattern scaled
     const a=N>=13?3:2, m=Math.floor(N/2), z=N-1-a;
@@ -222,8 +228,47 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   function start(){
     const N=+document.getElementById("size").value;
     const variant=document.getElementById("variant").value;
-    s=Hoshi.newState(N,variant); hist=[]; mode='trooper';
-    buildBoard(); render();
+    const md=document.getElementById("mode").value;
+    players = md==='vscpu' ? ['human','cpu'] : md==='cpucpu' ? ['cpu','cpu'] : ['human','human'];
+    s=Hoshi.newState(N,variant); hist=[]; mode='trooper'; moveSeq++;
+    buildBoard(); render(); scheduleBot();
+  }
+
+  // --- greedy AI opponent (Phase 1): mirrors the Python GreedyPlayer eval ---
+  function evaluate(st, me){
+    if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
+    const opp=1-me, stones=[0,0];
+    for(const b of st.board) if(b) stones[b.c]++;
+    // capture pressure dominates; then board presence; penalize own troopers in atari
+    let atari=0; const seen=new Set();
+    for(let i=0;i<st.board.length;i++){const b=st.board[i];
+      if(b && b.c===me && b.k==='T' && !seen.has(i)){
+        const {group,libs}=Hoshi.groupLib(st.N,st.board,i);
+        group.forEach(g=>seen.add(g));
+        if(libs<=1) atari++;
+      }}
+    return 30*(st.lostTroopers[opp]-st.lostTroopers[me]) + (stones[me]-stones[opp]) - 4*atari;
+  }
+  function botMove(st){
+    const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
+    let best=null, bestM={type:'pass'};
+    for(const m of Hoshi.legalMoves(st)){
+      if(m.type==='pass' && filled<0.92) continue;   // pass only to settle territory
+      const ns=Hoshi.apply(st,m); if(ns===null) continue;
+      const v=evaluate(ns,me)+Math.random()*0.01;
+      if(best===null || v>best){best=v; bestM=m;}
+    }
+    return bestM;
+  }
+  function scheduleBot(){
+    if(s.over || players[s.toMove]!=='cpu') return;
+    const seq=moveSeq;
+    setTimeout(()=>{
+      if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;  // stale / changed
+      const ns=Hoshi.apply(s, botMove(s));
+      if(ns){ hist.push(s); s=ns; moveSeq++; }
+      render(); scheduleBot();   // chain (handles Computer vs Computer)
+    }, 350);
   }
 
   let S, PAD; // pixel spacing, padding
@@ -302,13 +347,13 @@ if(typeof module!=='undefined') module.exports=Hoshi;
   }
 
   function onClick(i){
-    if(s.over)return;
+    if(s.over || players[s.toMove]==='cpu') return;   // ignore clicks on the bot's turn
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
     const ns=Hoshi.apply(s,move);
     if(ns===null){ flash(i); return; }
-    hist.push(s); s=ns;
+    hist.push(s); s=ns; moveSeq++;
     if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
-    render();
+    render(); scheduleBot();
   }
   function flash(i){ const[r,c]=Hoshi.rc(s.N,i);
     const ring=document.createElementNS(SVGNS,"circle");
@@ -329,17 +374,23 @@ if(typeof module!=='undefined') module.exports=Hoshi;
       return;
     }
     const who=s.toMove===0?"Blue":"Red";
+    const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
+    if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
     const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
-    el.innerHTML=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`+
-      `${who} to move — ${act}.`;
+    el.innerHTML=`${dot}${who} to move — ${act}.`;
   }
 
   // controls
   document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
   document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
-  document.getElementById("pass").onclick=()=>{const ns=Hoshi.apply(s,{type:'pass'});hist.push(s);s=ns;render();};
-  document.getElementById("undo").onclick=()=>{if(hist.length){s=hist.pop();render();}};
+  document.getElementById("pass").onclick=()=>{ if(s.over||players[s.toMove]==='cpu')return;
+    hist.push(s); s=Hoshi.apply(s,{type:'pass'}); moveSeq++; render(); scheduleBot(); };
+  document.getElementById("undo").onclick=()=>{ if(!hist.length)return;
+    s=hist.pop();
+    while(hist.length && players[s.toMove]==='cpu') s=hist.pop();  // back to your own turn
+    moveSeq++; render(); };
   document.getElementById("new").onclick=start;
+  document.getElementById("mode").onchange=start;
   document.getElementById("size").onchange=start;
   document.getElementById("variant").onchange=start;
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();alert(

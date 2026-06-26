@@ -1,22 +1,10 @@
 // Node test for the HTML game's rules engine.
 //   node web/test_rules.js
-// Extracts the DOM-free rules block from hoshi.html and checks: range tuning,
-// setup placement, group capture, suicide-illegality, and that random full
-// games terminate with a valid winner across sizes and setups.
-const fs = require('fs');
-const path = require('path');
-
-const html = fs.readFileSync(path.join(__dirname, 'hoshi.html'), 'utf8');
-// extract a <script id="..."> block by its id (tolerates attributes on the tag)
-function scriptById(id) {
-  const open = html.indexOf(`<script id="${id}"`);
-  const start = html.indexOf('>', open) + 1;
-  const end = html.indexOf('</script>', start);
-  return html.slice(start, end);
-}
-const mod = { exports: {} };
-new Function('module', 'exports', scriptById('hoshi-rules'))(mod, mod.exports);
-const H = mod.exports;
+// Loads the shared rules module (hoshi-rules.js — same file the page and the
+// future Edge Function import) and checks: range tuning, setup placement, group
+// capture, suicide-illegality, and that random full games terminate with a valid
+// winner across sizes and setups.
+const H = require('./hoshi-rules.js');
 
 let ok = 0, fail = 0;
 const A = (c, m) => { if (c) ok++; else { fail++; console.log('  FAIL:', m); } };

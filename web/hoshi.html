@@ -135,9 +135,9 @@
     <option value="13">13 &times; 13</option>
   </select>
   <select id="variant" title="Where your troopers start — same rules, different game">
-    <option value="beachhead">Beachhead — all in reserve</option>
+    <option value="beachhead" selected>Beachhead — all in reserve</option>
     <option value="vanguard">Vanguard — 1 deployed</option>
-    <option value="garrison" selected>Garrison — 2 deployed</option>
+    <option value="garrison">Garrison — 2 deployed</option>
     <option value="bastion">Bastion — 3 deployed</option>
     <option value="fog">Fog — 5 scattered</option>
   </select>
@@ -653,9 +653,14 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(s.over){ if(!ambient && !winShown){ winShown=true; showWin(); } }   // winner is set server-side (Tier 1.5)
     else { winShown=false; hideWin(); }
   }
-  // owner[i] = 0/1 for an empty point fully enclosed by one color, else null
+  // owner[i] = 0/1 for an empty point fully enclosed by one color, else null.
+  // During play we skip huge regions: a region covering most of the board is open
+  // space, not enclosed territory — shading it makes a single early stone look like
+  // it "owns" everything and confuses placement zones with the board. At game end
+  // (scoring) we show all of it. (Visual only; the real score uses areaScore.)
   function territoryMap(st){
     const N=st.N, owner=new Array(N*N).fill(null), seen=new Set();
+    const cap = st.over ? N*N : N*N*0.45;
     for(let i=0;i<N*N;i++){
       if(st.board[i]!=null||seen.has(i))continue;
       const reg=[i],stk=[i],border=new Set();seen.add(i);
@@ -664,7 +669,7 @@ if(typeof module!=='undefined') module.exports=Bot;
           if(st.board[q]!=null)border.add(st.board[q].c);
           else if(!seen.has(q)){seen.add(q);reg.push(q);stk.push(q);}
         }}
-      if(border.size===1){const o=[...border][0]; for(const p of reg)owner[p]=o;}
+      if(border.size===1 && reg.length<=cap){const o=[...border][0]; for(const p of reg)owner[p]=o;}
     }
     return {owner};
   }

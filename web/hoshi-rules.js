@@ -6,7 +6,14 @@ const Hoshi = (function(){
     // longer blankets the whole board, so placement carries risk. Too sparse
     // (ratio >>2.7, e.g. 9x9 at R 3) kills the capture path — don't go there.
     const R = N>=13 ? 5 : Math.max(3, Math.round(N/2.3));
-    return { N, R, troopers:5, captureToWin:3, maxPlies:N*N*4 };
+    // encircle: local-encirclement trooper capture — a deployed trooper is immune
+    // to group-liberty capture and falls only when every on-board neighbor is an
+    // enemy stone (drones still die normally). Off by default = classic Go capture.
+    // mobileDrones: drones gain a 'move' action (relocate within a ready trooper's
+    // shadow). moveMode 'step' = one orthogonal cell (wriggle, can't escape range);
+    // 'redeploy' = jump anywhere in shadow. Off by default = classic static play.
+    return { N, R, troopers:5, captureToWin:3, maxPlies:N*N*4, encircle:false,
+             mobileDrones:false, moveMode:'step' };
   }
   // positional-superko key: full board layout + whose turn it is to play next
   function posKey(board, toMove){
@@ -51,6 +58,7 @@ const Hoshi = (function(){
 
   function clone(s){
     return {N:s.N,R:s.R,troopers:s.troopers,captureToWin:s.captureToWin,maxPlies:s.maxPlies,
+      encircle:s.encircle, mobileDrones:s.mobileDrones, moveMode:s.moveMode,
       board:s.board.map(x=>x?{c:x.c,k:x.k}:null),
       reserve:[...s.reserve], lostTroopers:[...s.lostTroopers],
       placedPly:Object.assign({},s.placedPly), history:new Set(s.history),
@@ -76,24 +84,67 @@ const Hoshi = (function(){
     const [a,b]=areaScore(ns); ns.over=true; ns.winner = a>b?0:(b>a?1:-1);
   }
 
-  // move = {type:'trooper'|'drone'|'pass', i}
-  function apply(s, move){
-    const ns=clone(s), me=s.toMove;
-    if(move.type==='pass'){ ns.ply++; endTerritory(ns); return ns; }  // a pass ends & scores
-    const i=move.i;
-    if(ns.board[i]!=null)return null;
-    if(move.type==='trooper'){ if(ns.reserve[me]<=0)return null; }
-    else { if(!legalDrone(s,i))return null; }
-    ns.board[i]={c:me,k:move.type==='trooper'?'T':'D'};
-    // remove dead enemy groups
+  // Captures from a stone landing at index `i` (drop OR mobile-drone move). Mutates
+  // ns, tallies captured troopers, returns the removed Set. Shared so the drop and
+  // move actions can never drift apart.
+  function applyCaptures(ns, i, me){
     const dead=new Set();
     for(const q of orth(ns.N,i)){
       if(ns.board[q]&&ns.board[q].c!==me&&!dead.has(q)){
         const {group,libs}=groupLib(ns.N,ns.board,q);
         if(libs===0)group.forEach(g=>dead.add(g));
       }}
+    if(ns.encircle){
+      // troopers are immune to group-liberty capture: from a dead group only the
+      // drones fall. A trooper dies only when every on-board neighbor is an enemy
+      // stone — which `i` can only complete for a trooper beside it. (Check the
+      // pre-removal board: a friendly-drone neighbor, even a dying one, means the
+      // trooper is not yet walled in.)
+      for(const d of [...dead]) if(ns.board[d].k==='T') dead.delete(d);
+      for(const q of orth(ns.N,i)){
+        const cell=ns.board[q];
+        if(cell&&cell.c!==me&&cell.k==='T' &&
+           orth(ns.N,q).every(r=>ns.board[r]&&ns.board[r].c===me))
+          dead.add(q);
+      }
+    }
     dead.forEach(d=>{ if(ns.board[d].k==='T'){ns.lostTroopers[1-me]++; delete ns.placedPly[d];}
                       ns.board[d]=null; });
+    return dead;
+  }
+
+  // move = {type:'trooper'|'drone'|'pass', i} | {type:'move', from, to}
+  function apply(s, move){
+    const ns=clone(s), me=s.toMove;
+    if(move.type==='pass'){ ns.ply++; endTerritory(ns); return ns; }  // a pass ends & scores
+
+    if(move.type==='move'){              // mobile drone: relocate within trooper shadow
+      if(!ns.mobileDrones)return null;
+      const {from,to}=move, cell=ns.board[from];
+      if(!cell||cell.c!==me||cell.k!=='D'||ns.board[to]!=null)return null;
+      if(ns.moveMode==='step' && !orth(ns.N,from).includes(to))return null;
+      const ready=readyTroopers(s,me);
+      if(!ready.some(t=>cheb(ns.N,t,to)<=ns.R))return null;
+      ns.board[from]=null; ns.board[to]={c:me,k:'D'};
+      const dead=applyCaptures(ns,to,me);
+      const {libs}=groupLib(ns.N,ns.board,to);
+      if(libs===0 && dead.size===0)return null;
+      const key=posKey(ns.board, me^1);
+      if(ns.history.has(key)) return null;
+      ns.history.add(key);
+      ns.passes=0;
+      if(ns.lostTroopers[1-me]>=ns.captureToWin){ ns.over=true; ns.winner=me; }
+      ns.toMove^=1; ns.ply++;
+      if(!ns.over && ns.ply>=ns.maxPlies) endTerritory(ns);
+      return ns;
+    }
+
+    const i=move.i;
+    if(ns.board[i]!=null)return null;
+    if(move.type==='trooper'){ if(ns.reserve[me]<=0)return null; }
+    else { if(!legalDrone(s,i))return null; }
+    ns.board[i]={c:me,k:move.type==='trooper'?'T':'D'};
+    const dead=applyCaptures(ns,i,me);
     // suicide
     const {libs}=groupLib(ns.N,ns.board,i);
     if(libs===0 && dead.size===0)return null;
@@ -116,6 +167,18 @@ const Hoshi = (function(){
     if(s.reserve[s.toMove]>0)
       for(let i=0;i<s.board.length;i++) if(legalTrooper(s,i)) out.push({type:'trooper',i});
     for(let i=0;i<s.board.length;i++) if(legalDrone(s,i)) out.push({type:'drone',i});
+    if(s.mobileDrones){           // relocate a drone within a ready trooper's shadow
+      const ready=readyTroopers(s,s.toMove);
+      if(ready.length){
+        const inShadow=i=>s.board[i]==null && ready.some(t=>cheb(s.N,t,i)<=s.R);
+        for(let f=0;f<s.board.length;f++){
+          const c=s.board[f]; if(!c||c.c!==s.toMove||c.k!=='D')continue;
+          const cands = s.moveMode==='step' ? orth(s.N,f).filter(inShadow)
+                                            : (()=>{const a=[];for(let i=0;i<s.board.length;i++)if(inShadow(i))a.push(i);return a;})();
+          for(const t of cands) if(apply(s,{type:'move',from:f,to:t})) out.push({type:'move',from:f,to:t});
+        }
+      }
+    }
     return out;
   }
 

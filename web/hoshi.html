@@ -105,10 +105,16 @@
     <option value="bylink">Play by link (paste)</option>
     <option value="online">Play online (live)</option>
   </select>
-  <select id="diff" title="Computer strength (Medium/Hard use MCTS search)">
+  <select id="diff" title="Computer strength — in Watch mode this is Blue's strength">
     <option value="easy">Easy</option>
     <option value="medium" selected>Medium</option>
     <option value="hard">Hard</option>
+  </select>
+  <span id="diffVs" style="display:none;color:var(--muted);font-size:12px;align-self:center">vs</span>
+  <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
+    <option value="easy">Easy</option>
+    <option value="medium">Medium</option>
+    <option value="hard" selected>Hard</option>
   </select>
   <select id="size">
     <option value="9">9 &times; 9 (faster)</option>
@@ -121,6 +127,12 @@
     <option value="bastion">Bastion — 3 deployed</option>
     <option value="fog">Fog — 5 scattered</option>
   </select>
+  <label id="encircleLbl" title="Troopers are immune to ordinary capture — a deployed trooper falls only when every neighbor is an enemy stone (friendly drones shield it). Makes troopers durable anchors." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="encircle"> Trooper encirclement
+  </label>
+  <label id="mobileLbl" title="Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="mobile"> Mobile drones
+  </label>
 </div>
 <a class="small" id="rulesLink">how to play</a>
 
@@ -262,6 +274,13 @@ const Bot = (function(){
   // instead of the best — the Easy tier's handle: a strong eval makes pure greedy
   // a sharp opponent, so Easy slips on purpose to stay human-beatable. Medium
   // passes 0 (clean greedy); Hard uses MCTS below.
+  // Relocating a drone forgoes a fresh deployment, so an *idle* shuffle costs you a
+  // stone of board presence. Charge that opportunity cost as a tempo penalty: a real
+  // move (a capture is worth ~30, a defensive escape shows up in `pressure`) easily
+  // clears it; aimless shuffling falls below just placing a drone. Not an artificial
+  // rule — it's the genuine cost of spending a turn without adding a piece.
+  const MOVE_TEMPO=2.0;
+  const tempo=m=>m.type==='move'?MOVE_TEMPO:0;
   function botMove(st, blunder){
     const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
     const legal=[]; let best=null, bestM={type:'pass'};
@@ -269,7 +288,7 @@ const Bot = (function(){
       if(m.type==='pass' && filled<0.92) continue;
       const ns=Hoshi.apply(st,m); if(ns===null) continue;
       legal.push(m);
-      const v=evaluate(ns,me)+Math.random()*0.01;
+      const v=evaluate(ns,me)-tempo(m)+Math.random()*0.01;
       if(best===null || v>best){best=v; bestM=m;}
     }
     if(blunder && legal.length>1 && Math.random()<blunder) return legal[(Math.random()*legal.length)|0];
@@ -283,7 +302,7 @@ const Bot = (function(){
     for(const m of Hoshi.legalMoves(state)){
       if(m.type==='pass' && filled<0.92) continue;   // don't end the game while there's play left
       const ns=Hoshi.apply(state,m); if(ns===null) continue;
-      scored.push([evaluate(ns,me)+Math.random()*1e-6, m]);
+      scored.push([evaluate(ns,me)-tempo(m)+Math.random()*1e-6, m]);
     }
     if(!scored.length) return [{type:'pass'}];
     scored.sort((a,b)=>a[0]-b[0]);          // ascending; pop() yields the best first
@@ -361,6 +380,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   const SVGNS="http://www.w3.org/2000/svg";
   const board=document.getElementById("board");
   let s, mode='trooper', hist=[];
+  let moveSrc=null;                            // mobile drones: drone picked up to relocate
   let players=['human','human'], moveSeq=0;   // moveSeq invalidates stale bot timeouts
   let lastMove=null;                           // last point played (for the marker)
   let winShown=false;                          // ensures the win popup fires once per game
@@ -384,7 +404,9 @@ if(typeof module!=='undefined') module.exports=Bot;
       clearOnline(); history.replaceState(null,"",location.pathname+location.search);
     }
     players = md==='vscpu' ? ['human','cpu'] : md==='cpucpu' ? ['cpu','cpu'] : ['human','human'];
-    s=Hoshi.newState(N,variant); hist=[]; mode='trooper'; lastMove=null; awaitingHandoff=false; moveSeq++;
+    s=Hoshi.newState(N,variant); s.encircle=document.getElementById("encircle").checked;
+    s.mobileDrones=document.getElementById("mobile").checked;
+    hist=[]; mode='trooper'; lastMove=null; moveSrc=null; awaitingHandoff=false; moveSeq++;
     buildBoard(); render(); scheduleBot();
   }
 
@@ -392,8 +414,11 @@ if(typeof module!=='undefined') module.exports=Bot;
   //     thread. Falls back to running synchronously if a worker can't be made
   //     (e.g. blob workers blocked on file://). Difficulty sets the sim budget. ---
   let worker=null;
-  function tierParams(){   // three distinct policies, not just sim counts (a strong
-    const d=document.getElementById("diff").value;   // eval makes 1-ply greedy a real opponent)
+  function tierParams(seat){   // three distinct policies, not just sim counts (a strong
+    // eval makes 1-ply greedy a real opponent). In Watch (cpu-vs-cpu), each side
+    // reads its own selector: Blue=#diff, Red=#diff2 — so you can pit Medium vs Hard.
+    const watch=document.getElementById("mode").value==='cpucpu';
+    const d=document.getElementById(watch&&seat===1?"diff2":"diff").value;
     if(d==='easy') return {sims:0,   blunder:0.4};   // greedy that slips often — beatable
     if(d==='hard') return {sims:240, blunder:0};     // MCTS lookahead
     return {sims:0, blunder:0};                       // Medium = clean, sharp 1-ply greedy
@@ -421,7 +446,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   }
   function scheduleBot(){
     if(s.over || players[s.toMove]!=='cpu') return;
-    const seq=moveSeq, {sims,blunder}=tierParams(), depthCap=s.N>=13?28:36;
+    const seq=moveSeq, {sims,blunder}=tierParams(s.toMove), depthCap=s.N>=13?28:36;
     botStart=Date.now();
     botMinThink = document.getElementById("mode").value==='cpucpu' ? 800 : 450;   // watchable pace
     if(worker){ worker.postMessage({state:s, sims, blunder, depthCap, seq}); return; }
@@ -479,7 +504,9 @@ if(typeof module!=='undefined') module.exports=Bot;
     }
     // deploy zone highlight (signature): empty points reachable by a ready trooper, in drone mode
     const zone=new Set();
-    if(mode==='drone' && !s.over){
+    if(s.mobileDrones && moveSrc!==null && !s.over){          // legal landings for the picked-up drone
+      for(let i=0;i<N*N;i++) if(Hoshi.apply(s,{type:'move',from:moveSrc,to:i})) zone.add(i);
+    } else if(mode==='drone' && !s.over){
       for(let i=0;i<N*N;i++) if(Hoshi.legalDrone(s,i)) zone.add(i);
     }
     const zoneFill = s.toMove===0 ? "var(--zone)" : "var(--zone-red)";
@@ -496,6 +523,14 @@ if(typeof module!=='undefined') module.exports=Bot;
         d.setAttribute("cx",x);d.setAttribute("cy",y);d.setAttribute("r",S*0.24);
         d.setAttribute("fill",col);d.setAttribute("opacity","0.92");
         d.setAttribute("filter","url(#sh)");layer.appendChild(d);}
+    }
+    // picked-up drone: a bright ring marks the drone selected to relocate
+    if(moveSrc!=null && s.board[moveSrc]){
+      const[r,c]=Hoshi.rc(N,moveSrc);
+      const sel=document.createElementNS(SVGNS,"circle");
+      sel.setAttribute("cx",PAD+c*S);sel.setAttribute("cy",PAD+r*S);sel.setAttribute("r",S*0.34);
+      sel.setAttribute("fill","none");sel.setAttribute("stroke","#caa24a");
+      sel.setAttribute("stroke-width","3");layer.appendChild(sel);
     }
     // last-move marker: a gold ring framing the point just played
     if(lastMove!=null && s.board[lastMove]){
@@ -554,13 +589,15 @@ if(typeof module!=='undefined') module.exports=Bot;
     const before=s.board, mover=s.toMove;
     const ns=Hoshi.apply(s,move);
     if(ns===null) return false;
+    const landing = move.type==='move' ? move.to : move.i;  // a relocated drone lands at .to
     const caps=[];
     if(move.type!=='pass'){
-      for(let i=0;i<ns.board.length;i++) if(before[i] && !ns.board[i]) caps.push({i,c:before[i].c});
-      lastMove=move.i;
+      // a vacated move-source isn't a capture — exclude move.from (undefined otherwise)
+      for(let i=0;i<ns.board.length;i++) if(before[i] && !ns.board[i] && i!==move.from) caps.push({i,c:before[i].c});
+      lastMove=landing;
     } else { lastMove=null; }
     hist.push(s); s=ns; moveSeq++;
-    if(move.type!=='pass') placeRipple(move.i, mover===0?"var(--blue)":"var(--red)");
+    if(move.type!=='pass') placeRipple(landing, mover===0?"var(--blue)":"var(--red)");
     flashCaptures(caps);
     return true;
   }
@@ -578,6 +615,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   // translucent preview of the move under the cursor (desktop)
   function showGhost(i){
     if(s.over || players[s.toMove]==='cpu' || (online && s.toMove!==online.seat)) return;
+    if(moveSrc!==null) return;               // a drone is picked up — no placement preview
     ghostLayer.innerHTML="";
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
     if(Hoshi.apply(s,move)===null) return;   // not a legal placement here
@@ -619,6 +657,18 @@ if(typeof module!=='undefined') module.exports=Bot;
   function onClick(i){
     if(s.over || awaitingHandoff || players[s.toMove]==='cpu') return;  // locked / bot's turn
     if(online && (online.waiting || s.toMove!==online.seat)) return;    // awaiting opponent / not your seat
+    // mobile drones: click your own drone to pick it up, then click a lit destination
+    if(s.mobileDrones){
+      const here=s.board[i];
+      if(moveSrc===null && here && here.c===s.toMove && here.k==='D'){ moveSrc=i; render(); return; }
+      if(moveSrc!==null){
+        if(i===moveSrc){ moveSrc=null; render(); return; }              // click again to cancel
+        const mv={type:'move',from:moveSrc,to:i}; moveSrc=null;
+        if(doMove(mv)){ render(); if(!s.over) scheduleBot(); return; }   // mobile is local-only
+        if(here && here.c===s.toMove && here.k==='D'){ moveSrc=i; render(); return; } // re-pick another drone
+        flash(i); render(); return;                                     // not a legal destination
+      }
+    }
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
     if(!doMove(move)){ flash(i); return; }
     if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
@@ -660,19 +710,30 @@ if(typeof module!=='undefined') module.exports=Bot;
       el.innerHTML=`${dot}${who} has no moves left — press <b>End &amp; score</b>.`;
       return;
     }
+    if(moveSrc!==null){ el.innerHTML=`${dot}${who} — click a lit point to move the drone there, or click it again to cancel.`; return; }
     const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
     let line=`${dot}${who} to move — ${act}.`;
+    if(s.mobileDrones) line += ` <span style="color:var(--muted)">· or click one of your drones to relocate it.</span>`;
     const filled = s.board.filter(Boolean).length/(s.N*s.N);
     if(filled>0.6) line += ` <span style="color:var(--muted)">· or End &amp; score if you're done (${sc[0]>sc[1]?"Blue ahead":sc[1]>sc[0]?"Red ahead":"tied"} ${sc[0]}–${sc[1]}).</span>`;
     el.innerHTML=line;
   }
 
   // --- Phase 6: persistence & sharing ---
-  const cfgKeys=["mode","size","variant","diff"];
+  const cfgKeys=["mode","size","variant","diff","diff2"];
+  function syncDiffUI(){   // the Red-strength selector only makes sense while watching cpu-vs-cpu
+    const watch=document.getElementById("mode").value==='cpucpu';
+    document.getElementById("diff2").style.display=watch?"":"none";
+    document.getElementById("diffVs").style.display=watch?"":"none";
+  }
   function persistSettings(){ try{ const c={}; cfgKeys.forEach(k=>c[k]=document.getElementById(k).value);
+    c.encircle=document.getElementById("encircle").checked;
+    c.mobile=document.getElementById("mobile").checked;
     localStorage.setItem("hoshi_cfg",JSON.stringify(c)); }catch(e){} }
   function restoreSettings(){ try{ const c=JSON.parse(localStorage.getItem("hoshi_cfg")||"{}");
-    cfgKeys.forEach(k=>{ if(c[k]!=null) document.getElementById(k).value=c[k]; }); }catch(e){} }
+    cfgKeys.forEach(k=>{ if(c[k]!=null) document.getElementById(k).value=c[k]; });
+    if(c.encircle!=null) document.getElementById("encircle").checked=c.encircle;
+    if(c.mobile!=null) document.getElementById("mobile").checked=c.mobile; }catch(e){} }
   function stateToObj(st){ return {...st, history:[...st.history]}; }
   function stateFromObj(o){ return {...o, history:new Set(o.history)}; }
   function persist(){ try{ localStorage.setItem("hoshi_save",
@@ -704,7 +765,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   function linkFor(pvp){ return location.href.split("#")[0]+"#g="+encodeShare(pvp); }
   function loadPayload(o){
     s=stateFromObj(o.st); players=o.players||["human","human"];
-    hist=[]; lastMove=null; mode='trooper'; awaitingHandoff=false; moveSeq++;
+    hist=[]; lastMove=null; mode='trooper'; moveSrc=null; awaitingHandoff=false; moveSeq++;
     if(o.pvp) document.getElementById("mode").value="bylink";   // receiver enters by-link mode
     buildBoard(); render(); scheduleBot();
   }
@@ -880,6 +941,7 @@ if(typeof module!=='undefined') module.exports=Bot;
 
   function init(){
     restoreSettings();
+    syncDiffUI();
     initWorker();
     const h=location.hash;
     if(h.startsWith("#o=")){                       // online: invite link or resume
@@ -898,8 +960,8 @@ if(typeof module!=='undefined') module.exports=Bot;
 
   // controls
   document.getElementById("share").onclick=shareLink;
-  document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
-  document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
+  document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';moveSrc=null;render();}};
+  document.getElementById("mDrone").onclick=()=>{mode='drone';moveSrc=null;render();};
   document.getElementById("pass").onclick=()=>{ if(s.over||awaitingHandoff||players[s.toMove]==='cpu')return;
     if(online && (online.waiting || s.toMove!==online.seat)) return;
     doMove({type:'pass'}); render();
@@ -909,14 +971,17 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(!hist.length)return;
     s=hist.pop();
     while(hist.length && players[s.toMove]==='cpu') s=hist.pop();  // back to your own turn
-    moveSeq++; lastMove=null; awaitingHandoff=false;               // allow redoing a not-yet-sent move
+    moveSeq++; lastMove=null; moveSrc=null; awaitingHandoff=false; // allow redoing a not-yet-sent move
     document.getElementById("handoffModal").classList.remove("show");
     render(); };
   document.getElementById("new").onclick=start;
-  document.getElementById("mode").onchange=start;
+  document.getElementById("mode").onchange=()=>{ syncDiffUI(); start(); };
   document.getElementById("size").onchange=start;
   document.getElementById("variant").onchange=start;
+  document.getElementById("encircle").onchange=start;
+  document.getElementById("mobile").onchange=start;
   document.getElementById("diff").onchange=persistSettings;
+  document.getElementById("diff2").onchange=persistSettings;
   const rulesModal=document.getElementById("rules");
   const showRules=()=>rulesModal.classList.add("show");
   const hideRules=()=>rulesModal.classList.remove("show");
@@ -963,7 +1028,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   function unsubscribeLobby(){ if(lobbyChannel){ try{ hoshiDB.removeChannel(lobbyChannel); }catch(e){} lobbyChannel=null; } }
   function showLanding(){ document.getElementById("lndResume").style.display=hasSavedGame()?"block":"none"; landing.classList.add("show"); loadOpenGames(); subscribeLobby(); }
   function hideLanding(){ landing.classList.remove("show"); unsubscribeLobby(); }
-  function startMode(md){ hideLanding(); document.getElementById("mode").value=md; start(); }
+  function startMode(md){ hideLanding(); document.getElementById("mode").value=md; syncDiffUI(); start(); }
   function curN(){ return +document.getElementById("size").value; }
   function curVariant(){ return document.getElementById("variant").value; }
   document.getElementById("lndVsCpu").onclick=()=>startMode("vscpu");

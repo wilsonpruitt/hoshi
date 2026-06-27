@@ -38,6 +38,25 @@ class RuleConfig:
     #   it and the protection check never fires. Kept as a hook; for a REAL trooper
     #   toughness lever see CLAUDE.md ("trooper armor"). Use troopers / capture_to_win
     #   / drone_range / board size as the working strength dials.
+    trooper_encircle: bool = False  # local-encirclement capture: a deployed trooper
+    #   is IMMUNE to group-liberty capture (it can't be killed like a drone via a
+    #   shared distant liberty). When its group's liberties are filled, only the
+    #   drones die; the trooper survives, now standing on the vacated points. It is
+    #   removed ONLY when every on-board orthogonal neighbor is an enemy stone —
+    #   you must wall the piece in directly (friendly drones shield it). A real,
+    #   range-independent way to make troopers valuable anchors.
+    mobile_drones: bool = False  # adds a ('move', src, dst) action: relocate one of
+    #   your drones to an empty point within drone_range of one of YOUR ready
+    #   troopers. Drones stay tethered to trooper reach, so range binds every turn,
+    #   not just at drop. Troopers become mobile fronts; lose a trooper and its
+    #   drones can be stranded. A structural lever meant to pull play off Go's static
+    #   corner-anchoring. (Watch avg_plies/decap: fluid drones can slow capture and
+    #   drag games — that's the thing to measure.)
+    drone_move_mode: str = 'redeploy'  # only when mobile_drones: 'redeploy' = jump to
+    #   ANY in-shadow empty (Shogi drop — a full escape from a threatened spot);
+    #   'step' = move one orthogonal cell AND stay in a trooper's shadow (you can
+    #   wriggle but not teleport away, so an attacker can still run a drone down —
+    #   maneuver that only momentarily slows a capture instead of dodging it).
     drone_supply: int = 9999     # effectively unlimited; cap if you want scarcity
     max_plies: int = 600         # safety cap -> territory score if reached
     komi: float = 0.0            # added to player 1's territory score (tie-break / balance dial)
@@ -142,6 +161,24 @@ def legal_moves(s: State) -> list[Move]:
             for pt in empties:
                 if any(cheb(pt, tp) <= cfg.drone_range for tp in ready) and _move_ok(s, ('drone', pt)):
                     moves.append(('drone', pt))
+
+    # mobile drones: relocate a drone within trooper reach. 'redeploy' = any in-shadow
+    # empty; 'step' = only an orthogonally adjacent in-shadow empty.
+    if cfg.mobile_drones:
+        ready = s.my_ready_troopers(s.to_move)
+        if ready:
+            empty_set = set(empties)
+            in_shadow = [pt for pt in empties if any(cheb(pt, tp) <= cfg.drone_range for tp in ready)]
+            my_drones = [p for p, (col, k) in s.board.items() if col == s.to_move and k == 'D']
+            for src in my_drones:
+                if cfg.drone_move_mode == 'step':
+                    cands = [q for q in neighbors(src, cfg.n)
+                             if q in empty_set and any(cheb(q, tp) <= cfg.drone_range for tp in ready)]
+                else:
+                    cands = in_shadow
+                for dst in cands:
+                    if _move_ok(s, ('move', src, dst)):
+                        moves.append(('move', src, dst))
     return moves
 
 
@@ -164,6 +201,40 @@ def _try_apply(s: State, move: Move) -> Optional[State]:
             _finish_territory(ns)
         return ns
 
+    if move[0] == 'move':
+        if not cfg.mobile_drones:
+            return None
+        src, dst = move[1], move[2]
+        mover = s.to_move
+        if s.board.get(src) != (mover, 'D') or dst in s.board:
+            return None
+        if cfg.drone_move_mode == 'step' and dst not in set(neighbors(src, cfg.n)):
+            return None                              # one orthogonal step only
+        ready = s.my_ready_troopers(mover)
+        if not any(cheb(dst, tp) <= cfg.drone_range for tp in ready):
+            return None
+        ns = s.copy()
+        del ns.board[src]
+        ns.board[dst] = (mover, 'D')
+        dead = _apply_captures(ns, dst, mover, cfg)
+        _, libs = _group_of(ns.board, dst, cfg.n)
+        if not libs and not dead:                  # the relocated drone can't self-capture
+            return None
+        if cfg.superko:
+            h = _hash(ns)
+            if h in ns.history:
+                return None
+        ns.passes = 0
+        ns.to_move ^= 1
+        ns.ply += 1
+        if cfg.superko:
+            ns.history.add(_hash_after(ns, s))
+        if ns.lost_troopers[mover ^ 1] >= cfg.capture_to_win:
+            ns.over = True; ns.winner = mover
+        elif ns.ply >= cfg.max_plies:
+            _finish_territory(ns)
+        return ns
+
     kind = 'T' if move[0] == 'drop_t' else 'D'
     pt = move[1]
     if pt in s.board:
@@ -179,21 +250,11 @@ def _try_apply(s: State, move: Move) -> Optional[State]:
     mover = s.to_move
     ns.board[pt] = (mover, kind)
 
-    # 1) remove dead enemy groups (protection-aware)
-    dead = _dead_enemy_groups_protected(ns, pt, mover, cfg)
-    for d in dead:
-        if ns.board[d][1] == 'T':
-            ns.lost_troopers[mover ^ 1] += 1
-            ns.placed_ply.pop(d, None)
-        del ns.board[d]
-
-    # 2) suicide check on the moving group
+    # 1) captures, 2) suicide — shared with the mobile-drone 'move' action
+    dead = _apply_captures(ns, pt, mover, cfg)
     _, libs = _group_of(ns.board, pt, cfg.n)
     if not libs and not dead:
         return None
-
-    # optional hard protection: a trooper with an adjacent friendly drone cannot be self-captured
-    # (already alive here, so nothing to do; protection matters in enemy-capture step below)
 
     # 3) superko
     if cfg.superko:
@@ -226,6 +287,32 @@ def apply_move(s: State, move: Move) -> State:
     if ns is None:
         raise ValueError(f"illegal move {move}")
     return ns
+
+
+def _apply_captures(ns, pt, mover, cfg) -> set:
+    """Remove enemy stones killed by placing/landing a stone at `pt`, mutating `ns`
+    and tallying captured troopers. Returns the removed set. Shared by the drop and
+    mobile-drone 'move' actions so their capture rules can never drift apart."""
+    dead = _dead_enemy_groups_protected(ns, pt, mover, cfg)
+    if cfg.trooper_encircle:
+        # Troopers are immune to group-liberty capture: from a dead group only the
+        # drones fall. A trooper dies ONLY when every on-board neighbor is an enemy
+        # stone — which `pt` can only complete for a trooper it sits next to.
+        # (Check the pre-removal board: a friendly-drone neighbor — even a dying one
+        # — means the trooper is not yet walled in.)
+        dead = {d for d in dead if ns.board[d][1] == 'D'}
+        for q in neighbors(pt, cfg.n):
+            cell = ns.board.get(q)
+            if cell is not None and cell[0] != mover and cell[1] == 'T' \
+               and all(r in ns.board and ns.board[r][0] == mover
+                       for r in neighbors(q, cfg.n)):
+                dead.add(q)
+    for d in dead:
+        if ns.board[d][1] == 'T':
+            ns.lost_troopers[mover ^ 1] += 1
+            ns.placed_ply.pop(d, None)
+        del ns.board[d]
+    return dead
 
 
 # hard_trooper_protection variant: filter dead troopers that have a friendly adjacent drone

@@ -21,6 +21,24 @@ python3 tests/test_mcts.py       # strength gate (HOSHI_FAST=1 to hurry)
 python3 selfplay_demo.py         # end-to-end sanity
 ```
 
+## Open tuning — RETURN HERE (not finalized)
+Two new strength dials exist and are tested across all three engines (Python /
+web JS / Deno): **`trooper_encircle`** (a trooper falls only when every on-board
+neighbor is enemy — durable anchors) and **`mobile_drones`** + `drone_move_mode`
+(`'step'` = relocate one orthogonal cell within a ready trooper's shadow). Both
+default OFF; the web app exposes them as the "Trooper encirclement" / "Mobile
+drones" toggles. The bots charge a `MOVE_TEMPO` opportunity cost on idle
+relocations (a shuffle forgoes a deployment) so mobile games resolve instead of
+dragging.
+
+**Unfinalized:** the **9×9 deploy range**. The bots-measured sweet spot for
+step-mobility (p0_winrate ≈0.50, decap ≈0.21, play off the corners) was at
+**range 3**; the web `makeConfig` still uses **range 4** on 9×9 (plays a touch
+shorter/watchable but its balance is unmeasured). Decision deferred pending
+tester feedback — revisit whether mobile should force R3 on 9×9 or expose a
+range control. See `trooper_diversity.py` (modes: pilot/full/encircle/rescue/
+mobile/step/tune) for the measurement harness behind these numbers.
+
 ## The prime directive
 **Never tune rules or trust strategy claims while a test is red.** An agent
 optimizing on a broken engine produces confident garbage. Engine correctness is

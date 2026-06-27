@@ -137,7 +137,8 @@
       <button id="lndVsCpu">Play vs Computer</button>
       <button id="lndHotseat">Two players (same screen)</button>
       <button id="lndWatch">Watch Computer vs Computer</button>
-      <button id="lndCreate">Create online game</button>
+      <button id="lndOpen">Host an open game</button>
+      <button id="lndInvite">Create private game (invite link)</button>
     </div>
     <div style="margin-top:16px;text-align:left">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Open games</div>
@@ -598,7 +599,7 @@ if(typeof module!=='undefined') module.exports=Bot;
 
   function onClick(i){
     if(s.over || awaitingHandoff || players[s.toMove]==='cpu') return;  // locked / bot's turn
-    if(online && s.toMove!==online.seat) return;                       // not your seat
+    if(online && (online.waiting || s.toMove!==online.seat)) return;    // awaiting opponent / not your seat
     const move = mode==='trooper' ? {type:'trooper',i} : {type:'drone',i};
     if(!doMove(move)){ flash(i); return; }
     if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
@@ -628,6 +629,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       return;
     }
     if(awaitingHandoff){ el.innerHTML=`Move made — send the link to your opponent to continue.`; return; }
+    if(online && online.waiting){ el.innerHTML=`Waiting for an opponent to join… (your game is listed in the lobby)`; return; }
     if(online && s.toMove!==online.seat){
       const odot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
       el.innerHTML=`${odot}Opponent's turn — waiting for their move…`; return;
@@ -716,7 +718,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   function saveOnline(){ try{ if(!online) return; const {gameId,seat,token,invite}=online;   // not the live channel
     localStorage.setItem("hoshi_online",JSON.stringify({gameId,seat,token,invite})); }catch(e){} }
   function loadStoredOnline(){ try{ return JSON.parse(localStorage.getItem("hoshi_online")||"null"); }catch(e){ return null; } }
-  function clearOnline(){ unsubscribeOnline(); try{ localStorage.removeItem("hoshi_online"); }catch(e){} online=null; }
+  function clearOnline(){ cancelOpenIfWaiting(); unsubscribeOnline(); try{ localStorage.removeItem("hoshi_online"); }catch(e){} online=null; }
   function unsubscribeOnline(){ if(online && online.channel){ try{ hoshiDB.removeChannel(online.channel); }catch(e){} online.channel=null; } }
   // Phase 4 — live moves. Subscribe to this game's move inserts; when a row lands
   // we apply just that move (or resync on a gap). Our OWN move's echo has a ply we
@@ -728,6 +730,9 @@ if(typeof module!=='undefined') module.exports=Bot;
       .on("postgres_changes",
         {event:"INSERT", schema:"public", table:"moves", filter:"game_id=eq."+online.gameId},
         (p)=>applyRemote(p.new.move, p.new.ply))
+      .on("postgres_changes",                      // host's open game gets claimed -> unlock
+        {event:"UPDATE", schema:"public", table:"games", filter:"id=eq."+online.gameId},
+        (p)=>{ if(online && online.waiting && p.new.status==="active"){ online.waiting=false; render(); toast("Opponent joined — your move."); } })
       .subscribe((status)=>{ if(status==="SUBSCRIBED") refreshOnline(); });
   }
   function applyRemote(move, ply){
@@ -765,6 +770,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     try{
       const g=await hoshiDB.from("games").select("initial_state,status,winner").eq("id",online.gameId).single();
       if(g.error) throw g.error;
+      if(online) online.waiting = (g.data.status==="open");   // host still awaiting an opponent
       const mv=await hoshiDB.from("moves").select("ply,move").eq("game_id",online.gameId).order("ply");
       if(mv.error) throw mv.error;
       let st=stateFromObj(g.data.initial_state);
@@ -772,6 +778,68 @@ if(typeof module!=='undefined') module.exports=Bot;
       players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       buildBoard(); render(); subscribeOnline(); return true;
     }catch(e){ console.error(e); toast("Sync failed"); return false; }
+  }
+  // --- Tier 2 lobby: host an open game / browse + join open games ---
+  function cancelOpenIfWaiting(){
+    if(hoshiDB && online && online.waiting && online.seat===0)
+      hoshiDB.rpc("cancel_open_game",{p_game_id:online.gameId,p_blue_token:online.token}).catch(()=>{});
+  }
+  async function createOpenGame(N,variant){
+    if(!hoshiDB){ toast("Online play isn't configured"); return; }
+    unsubscribeOnline();
+    const st=Hoshi.newState(N,variant);
+    try{
+      const host=(localStorage.getItem("hoshi_name")||"").slice(0,24)||null;
+      const {data,error}=await hoshiDB.rpc("create_open_game",
+        {p_initial_state:stateToObj(st), p_board_n:N, p_variant0:variant, p_variant1:variant, p_host_name:host});
+      if(error) throw error;
+      const {game_id,blue_token}=data[0];
+      online={gameId:game_id, seat:0, token:blue_token, waiting:true};
+      saveOnline();
+      players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
+      history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);
+      buildBoard(); render(); subscribeOnline();
+      toast("Listed in the lobby — waiting for an opponent.");
+    }catch(e){ console.error(e); toast("Couldn't create the open game"); }
+  }
+  async function joinOpenGame(gameId){
+    if(!hoshiDB) return;
+    unsubscribeOnline();
+    try{
+      const {data,error}=await hoshiDB.rpc("join_open_game",{p_game_id:gameId});
+      if(error) throw error;
+      online={gameId, seat:1, token:data};        // data = the Red seat token
+      saveOnline();
+      hideLanding(); document.getElementById("mode").value="online";
+      history.replaceState(null,"",location.pathname+location.search+"#o="+gameId);
+      await refreshOnline();
+    }catch(e){ console.error(e); toast(e.message||"Couldn't join — game may be taken"); loadOpenGames(); }
+  }
+  async function loadOpenGames(){
+    const el=document.getElementById("openGamesList");
+    if(!hoshiDB){ el.textContent="Online play isn't configured."; return; }
+    try{
+      const cutoff=new Date(Date.now()-30*60*1000).toISOString();
+      const {data,error}=await hoshiDB.from("games")
+        .select("id,board_n,variant0,host_name,created_at")
+        .eq("status","open").gt("created_at",cutoff).order("created_at",{ascending:false}).limit(20);
+      if(error) throw error;
+      renderOpenGames(data||[]);
+    }catch(e){ console.error(e); el.textContent="Couldn't load open games."; }
+  }
+  function renderOpenGames(rows){
+    const el=document.getElementById("openGamesList");
+    rows=rows.filter(r=>!(online && online.gameId===r.id));   // hide my own hosted game
+    if(!rows.length){ el.textContent="None right now — host one above."; return; }
+    el.textContent="";
+    for(const r of rows){
+      const row=document.createElement("div");
+      row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #00000014";
+      const label=document.createElement("span");
+      label.textContent=`${r.host_name||"Someone"} · ${r.board_n}×${r.board_n} · ${r.variant0}`;  // textContent = no XSS
+      const b=document.createElement("button"); b.textContent="Join"; b.onclick=()=>joinOpenGame(r.id);
+      row.appendChild(label); row.appendChild(b); el.appendChild(row);
+    }
   }
   async function submitOnlineMove(move){
     if(!hoshiDB || !online) return;
@@ -816,7 +884,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("mTrooper").onclick=()=>{if(s.reserve[s.toMove]>0){mode='trooper';render();}};
   document.getElementById("mDrone").onclick=()=>{mode='drone';render();};
   document.getElementById("pass").onclick=()=>{ if(s.over||awaitingHandoff||players[s.toMove]==='cpu')return;
-    if(online && s.toMove!==online.seat) return;
+    if(online && (online.waiting || s.toMove!==online.seat)) return;
     doMove({type:'pass'}); render();
     if(online){ submitOnlineMove({type:'pass'}); return; }
     if(document.getElementById("mode").value!=="bylink") scheduleBot(); };  // ending shows the win popup
@@ -868,18 +936,21 @@ if(typeof module!=='undefined') module.exports=Bot;
   // landing / main menu (Tier 2)
   const landing=document.getElementById("landing");
   function hasSavedGame(){ try{ const o=JSON.parse(localStorage.getItem("hoshi_save")||"null"); return !!(o&&o.st&&!o.st.over); }catch(e){ return false; } }
-  function showLanding(){ document.getElementById("lndResume").style.display=hasSavedGame()?"block":"none"; landing.classList.add("show"); }
+  function showLanding(){ document.getElementById("lndResume").style.display=hasSavedGame()?"block":"none"; landing.classList.add("show"); loadOpenGames(); }
   function hideLanding(){ landing.classList.remove("show"); }
   function startMode(md){ hideLanding(); document.getElementById("mode").value=md; start(); }
+  function curN(){ return +document.getElementById("size").value; }
+  function curVariant(){ return document.getElementById("variant").value; }
   document.getElementById("lndVsCpu").onclick=()=>startMode("vscpu");
   document.getElementById("lndHotseat").onclick=()=>startMode("hotseat");
   document.getElementById("lndWatch").onclick=()=>startMode("cpucpu");
-  document.getElementById("lndCreate").onclick=()=>startMode("online");
+  document.getElementById("lndInvite").onclick=()=>startMode("online");                 // private capability link
+  document.getElementById("lndOpen").onclick=()=>{ hideLanding(); persistSettings(); createOpenGame(curN(),curVariant()); };
   document.getElementById("lndResume").onclick=()=>{ hideLanding();
     try{ const o=JSON.parse(localStorage.getItem("hoshi_save")); if(o&&o.st){ loadPayload(o); toast("Resumed your game"); return; } }catch(e){}
     start(); };
   document.getElementById("lndRules").onclick=(e)=>{ e.preventDefault(); showRules(); };
-  document.getElementById("menuBtn").onclick=()=>showLanding();
+  document.getElementById("menuBtn").onclick=()=>{ cancelOpenIfWaiting(); showLanding(); };
 
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ hideRules(); hideWin(); hideHandoff(); } });
 

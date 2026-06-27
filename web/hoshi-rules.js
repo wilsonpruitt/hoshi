@@ -1,9 +1,11 @@
 const Hoshi = (function(){
   function makeConfig(N){
-    // Drone range tuned to keep board/range ~2.3 — the validated balance ratio.
-    // Too sparse (ratio >>2.5) and zones stop overlapping: the game decomposes
-    // into two solitaires and the capture win-path dies. 9->4, 13->6.
-    const R = Math.max(3, Math.round(N/2.3));
+    // Deploy radius. 9x9 keeps ratio ~2.3 (R 4). 13x13 uses R 5 (ratio 2.6):
+    // MCTS self-play shows it's healthier than R 6 (perfectly first-player fair,
+    // capture path alive, best balance objective) AND a centered trooper no
+    // longer blankets the whole board, so placement carries risk. Too sparse
+    // (ratio >>2.7, e.g. 9x9 at R 3) kills the capture path — don't go there.
+    const R = N>=13 ? 5 : Math.max(3, Math.round(N/2.3));
     return { N, R, troopers:5, captureToWin:3, maxPlies:N*N*4 };
   }
   // positional-superko key: full board layout + whose turn it is to play next

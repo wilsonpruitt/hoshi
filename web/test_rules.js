@@ -11,7 +11,7 @@ const A = (c, m) => { if (c) ok++; else { fail++; console.log('  FAIL:', m); } }
 
 // 1) drone range tuned to board/range ~2.3
 A(H.makeConfig(9).R === 4, 'R(9) should be 4, got ' + H.makeConfig(9).R);
-A(H.makeConfig(13).R === 6, 'R(13) should be 6, got ' + H.makeConfig(13).R);
+A(H.makeConfig(13).R === 5, 'R(13) should be 5, got ' + H.makeConfig(13).R);
 
 // 2) setups place the right number of home troopers
 for (const [v, exp] of [['beachhead', 0], ['vanguard', 1], ['garrison', 2], ['bastion', 3], ['fog', 5]]) {

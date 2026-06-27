@@ -96,6 +96,7 @@
   <button id="pass">End &amp; score</button>
   <button id="undo">Undo</button>
   <button id="new">New game</button>
+  <button id="menuBtn" title="Back to the main menu">Menu</button>
   <button id="share" title="Copy a link to this exact position">Copy link</button>
   <select id="mode" title="Who controls each side">
     <option value="hotseat">2 players (hot-seat)</option>
@@ -124,6 +125,27 @@
 <a class="small" id="rulesLink">how to play</a>
 
 <div id="toast"></div>
+
+<div class="modal" id="landing">
+  <div class="modal-card" style="max-width:460px">
+    <h2 style="font-size:22px;letter-spacing:.05em;margin:2px 0 6px">HOSHI</h2>
+    <p style="color:var(--muted);margin:0 0 14px;font-size:13px">Paratroopers, drones, and
+       territory. Drop troopers, deploy drones within their range, surround groups to capture.
+       Win by <b>decapitation</b> (capture 3 enemy troopers) or by <b>territory</b>.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button id="lndResume" style="display:none">Resume your game</button>
+      <button id="lndVsCpu">Play vs Computer</button>
+      <button id="lndHotseat">Two players (same screen)</button>
+      <button id="lndWatch">Watch Computer vs Computer</button>
+      <button id="lndCreate">Create online game</button>
+    </div>
+    <div style="margin-top:16px;text-align:left">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Open games</div>
+      <div id="openGamesList" style="font-size:13px;color:var(--muted)">None right now — create one above.</div>
+    </div>
+    <a class="small" id="lndRules" style="display:inline-block;margin-top:14px">how to play</a>
+  </div>
+</div>
 
 <div class="modal" id="handoffModal">
   <div class="modal-card" style="text-align:center;max-width:420px">
@@ -786,9 +808,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       if(st && st.gameId===parts[0]){ online=st; document.getElementById("mode").value="online"; refreshOnline(); return; }
     }
     if(h.startsWith("#g=")){ try{ loadPayload(decodeShare(h.slice(3))); toast("Loaded shared game"); return; }catch(e){} }
-    try{ const saved=localStorage.getItem("hoshi_save");
-      if(saved){ const o=JSON.parse(saved); if(o&&o.st&&!o.st.over){ loadPayload(o); toast("Resumed your game"); return; } } }catch(e){}
-    start();
+    showLanding();   // no deep link → the menu, not straight into a game
   }
 
   // controls
@@ -845,9 +865,23 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("handoffClose").onclick=hideHandoff;   // board stays locked until opponent's link
   handoffModal.addEventListener("click",e=>{ if(e.target===handoffModal) hideHandoff(); });
 
+  // landing / main menu (Tier 2)
+  const landing=document.getElementById("landing");
+  function hasSavedGame(){ try{ const o=JSON.parse(localStorage.getItem("hoshi_save")||"null"); return !!(o&&o.st&&!o.st.over); }catch(e){ return false; } }
+  function showLanding(){ document.getElementById("lndResume").style.display=hasSavedGame()?"block":"none"; landing.classList.add("show"); }
+  function hideLanding(){ landing.classList.remove("show"); }
+  function startMode(md){ hideLanding(); document.getElementById("mode").value=md; start(); }
+  document.getElementById("lndVsCpu").onclick=()=>startMode("vscpu");
+  document.getElementById("lndHotseat").onclick=()=>startMode("hotseat");
+  document.getElementById("lndWatch").onclick=()=>startMode("cpucpu");
+  document.getElementById("lndCreate").onclick=()=>startMode("online");
+  document.getElementById("lndResume").onclick=()=>{ hideLanding();
+    try{ const o=JSON.parse(localStorage.getItem("hoshi_save")); if(o&&o.st){ loadPayload(o); toast("Resumed your game"); return; } }catch(e){}
+    start(); };
+  document.getElementById("lndRules").onclick=(e)=>{ e.preventDefault(); showRules(); };
+  document.getElementById("menuBtn").onclick=()=>showLanding();
+
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ hideRules(); hideWin(); hideHandoff(); } });
-  // first visit: open the rules once so new players aren't dropped in cold
-  try{ if(!localStorage.getItem("hoshi_seen")){ showRules(); localStorage.setItem("hoshi_seen","1"); } }catch(e){}
 
   window.addEventListener("resize",()=>{if(s){buildBoard();render();}});
   init();

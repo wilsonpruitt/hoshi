@@ -60,6 +60,10 @@ class RuleConfig:
     drone_supply: int = 9999     # effectively unlimited; cap if you want scarcity
     max_plies: int = 600         # safety cap -> territory score if reached
     komi: float = 0.0            # added to player 1's territory score (tie-break / balance dial)
+    trooper_loss_penalty: float = 0.0  # area subtracted from a color's TERRITORY score per
+    #   trooper it has lost (a per-trooper negative komi). Makes losing a trooper hurt the
+    #   territory path too — you bleed the map's deployment reach — so the two win-paths
+    #   are coupled. ~4 is a strong "troopers are precious" setting.
 
 
 def neighbors(pt: Point, n: int) -> Iterable[Point]:
@@ -365,8 +369,8 @@ def area_score(s: State) -> tuple[float, float]:
                         seen.add(q); region.add(q); stack.append(q)
             if len(borders) == 1:
                 terr[borders.pop()] += len(region)
-    a = stones[0] + terr[0]
-    b = stones[1] + terr[1] + cfg.komi
+    a = stones[0] + terr[0] - cfg.trooper_loss_penalty * s.lost_troopers[0]
+    b = stones[1] + terr[1] + cfg.komi - cfg.trooper_loss_penalty * s.lost_troopers[1]
     return a, b
 
 

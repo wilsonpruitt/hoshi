@@ -12,8 +12,11 @@ const Hoshi = (function(){
     // mobileDrones: drones gain a 'move' action (relocate within a ready trooper's
     // shadow). moveMode 'step' = one orthogonal cell (wriggle, can't escape range);
     // 'redeploy' = jump anywhere in shadow. Off by default = classic static play.
+    // trooperLossPenalty: area subtracted from your TERRITORY score per trooper you've
+    // lost — losing troopers costs you the map (deployment reach), coupling the two
+    // win-paths. (Decap wins ignore it; it only bites at territory scoring.)
     return { N, R, troopers:5, captureToWin:3, maxPlies:N*N*4, encircle:false,
-             mobileDrones:false, moveMode:'step' };
+             mobileDrones:false, moveMode:'step', trooperLossPenalty:4 };
   }
   // positional-superko key: full board layout + whose turn it is to play next
   function posKey(board, toMove){
@@ -59,6 +62,7 @@ const Hoshi = (function(){
   function clone(s){
     return {N:s.N,R:s.R,troopers:s.troopers,captureToWin:s.captureToWin,maxPlies:s.maxPlies,
       encircle:s.encircle, mobileDrones:s.mobileDrones, moveMode:s.moveMode,
+      trooperLossPenalty:s.trooperLossPenalty,
       board:s.board.map(x=>x?{c:x.c,k:x.k}:null),
       reserve:[...s.reserve], lostTroopers:[...s.lostTroopers],
       placedPly:Object.assign({},s.placedPly), history:new Set(s.history),
@@ -78,7 +82,8 @@ const Hoshi = (function(){
         }}
       if(border.size===1)terr[[...border][0]]+=reg.length;
     }
-    return [stones[0]+terr[0], stones[1]+terr[1]];
+    const pen=s.trooperLossPenalty||0;   // lost troopers cost territory (negative komi)
+    return [stones[0]+terr[0]-pen*s.lostTroopers[0], stones[1]+terr[1]-pen*s.lostTroopers[1]];
   }
   function endTerritory(ns){
     const [a,b]=areaScore(ns); ns.over=true; ns.winner = a>b?0:(b>a?1:-1);

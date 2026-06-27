@@ -28,7 +28,7 @@ import numpy as np
 from .engine import (RuleConfig, legal_moves, apply_move, area_score,
                      neighbors, cheb, _group_of)
 
-FEATURE_NAMES = ["cap", "area", "cov", "spc", "prs"]
+FEATURE_NAMES = ["cap", "area", "cov", "spc", "prs", "res"]
 
 
 def coverage(s, color):
@@ -78,12 +78,16 @@ def pressure(s, me):
 def features(s, me):
     opp = 1 - me
     a = area_score(s)
+    # reserve: value holding a SMALL reserve (up to 2) to replace fallen troopers
+    # later — capped so the bot still deploys most of them for board presence.
+    res = min(s.reserve[me], 2) - min(s.reserve[opp], 2)
     return (
         (s.lost_troopers[opp] - s.lost_troopers[me]),
         (a[me] - a[opp]),
         (coverage(s, me) - coverage(s, opp)),
         (clump(s, opp) - clump(s, me)),
         pressure(s, me),
+        res,
     )
 
 
@@ -119,13 +123,13 @@ class WeightGreedy:
         return bestm
 
 
-# weight order: [cap, area, cov, spc, prs]
+# weight order: [cap, area, cov, spc, prs, res]
 SEED_STYLES = {
-    "aggro":        (42, 1.0, 0.5, 3.0, 2.2),   # decap-hunter
-    "territorial":  (18, 3.2, 0.6, 3.0, 0.5),   # hold ground
-    "expansionist": (24, 1.2, 2.2, 3.0, 0.8),   # spread for reach
-    "tactical":     (28, 1.0, 0.5, 3.0, 3.2),   # squeeze liberties
-    "balanced":     (30, 1.5, 0.8, 3.0, 1.0),   # the current-ish hand eval
+    "aggro":        (42, 1.0, 0.5, 3.0, 2.2, 1.0),   # decap-hunter, dumps troopers
+    "territorial":  (18, 3.2, 0.6, 3.0, 0.5, 3.0),   # hold ground, keep reserve
+    "expansionist": (24, 1.2, 2.2, 3.0, 0.8, 2.0),   # spread for reach
+    "tactical":     (28, 1.0, 0.5, 3.0, 3.2, 1.5),   # squeeze liberties
+    "balanced":     (30, 1.5, 0.8, 3.0, 1.0, 2.0),   # the current-ish hand eval
 }
 
 
@@ -139,9 +143,9 @@ def seed_players(seed=0):
 # no single dominant) — measured by intransitivity / dominance. Greedy players
 # (fast) for the search; MCTS-validate the survivors afterwards.
 # ---------------------------------------------------------------------------
-# weight order:        [cap,  area, cov,  spc, prs]
-WMIN = np.array([8.0,  0.3, 0.2, 0.0, 0.3])
-WMAX = np.array([50.0, 4.0, 2.6, 5.0, 4.0])
+# weight order:        [cap,  area, cov,  spc, prs, res]
+WMIN = np.array([8.0,  0.3, 0.2, 0.0, 0.3, 0.0])
+WMAX = np.array([50.0, 4.0, 2.6, 5.0, 4.0, 6.0])
 
 
 def random_weights(rng):
@@ -262,8 +266,8 @@ def coevolve(which="base-r4", pop_size=8, gens=5, gpp=3, workers=3, seed=0, max_
 CANON = "base-r4"
 CONFIGS = {
     # the base shipped game (both optional dials OFF) — what most players get
-    "base-r4": RuleConfig(n=9, drone_range=4, troopers=5, capture_to_win=3),
-    "base-r3": RuleConfig(n=9, drone_range=3, troopers=5, capture_to_win=3),
+    "base-r4": RuleConfig(n=9, drone_range=4, troopers=5, capture_to_win=3, trooper_loss_penalty=4),
+    "base-r3": RuleConfig(n=9, drone_range=3, troopers=5, capture_to_win=3, trooper_loss_penalty=4),
     # the distinctive "its own game" config — only if we feature it
     "mobile":  RuleConfig(n=9, drone_range=3, troopers=5, capture_to_win=3,
                           mobile_drones=True, drone_move_mode='step'),
@@ -321,7 +325,8 @@ def describe(w):
     base = SEED_STYLES["balanced"]
     ratios = [w[k] / base[k] if base[k] else 0 for k in range(len(w))]
     lead = max(range(len(w)), key=lambda k: ratios[k])
-    tag = {0: "decap-hunter", 1: "territorial", 2: "expansionist", 3: "spacing", 4: "squeeze"}[lead]
+    tag = {0: "decap-hunter", 1: "territorial", 2: "expansionist", 3: "spacing",
+           4: "squeeze", 5: "reserve-keeper"}[lead]
     return tag
 
 
@@ -336,7 +341,7 @@ def main():
         res = strength(which=which, iters=iters)
         w = res["weights"]
         print(f"\nSTRONGEST 1-ply weights ({describe(w)}):")
-        print(f"  [cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}]")
+        print(f"  [cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}, res {w[5]:.2f}]")
         print(f"  win-rate vs seed panel = {res['winrate']}  (a FAST bot — 1-ply, no MCTS lag)")
         return
 
@@ -354,7 +359,7 @@ def main():
             w = best["pop"][i]
             mark = "*" if pi[i] > 0.05 else " "
             print(f" {mark} alpha={pi[i]:.3f}  {describe(w):>12}  "
-                  f"[cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}]")
+                  f"[cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}, res {w[5]:.2f}]")
         print("(* = carries equilibrium mass — the styles worth shipping as personalities)")
         return
 

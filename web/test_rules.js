@@ -152,5 +152,17 @@ for (const N of [9, 13]) for (const v of ['beachhead', 'garrison', 'bastion', 'f
   A(e && !e.over, 'a lone pass after a move is only the first pass again');
 }
 
+// 9) trooper-loss territory penalty (negative komi): each lost trooper costs area.
+{
+  const N = 9, s = H.newState(N, 'beachhead');   // trooperLossPenalty defaults to 4
+  s.board[H.idx(N, 4, 4)] = { c: 0, k: 'T' };
+  s.board[H.idx(N, 4, 6)] = { c: 1, k: 'T' };
+  s.lostTroopers = [2, 0];                        // blue has lost 2 troopers
+  const a = H.areaScore(s);
+  const b = H.areaScore({ ...s, trooperLossPenalty: 0 });  // same board, no penalty
+  A(b[0] - a[0] === 8, `blue loses 8 area for 2 lost troopers (got ${b[0] - a[0]})`);
+  A(a[1] === b[1], 'a player with no losses is unaffected by the penalty');
+}
+
 console.log(`\n${ok} checks passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

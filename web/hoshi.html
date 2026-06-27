@@ -326,9 +326,10 @@ const Bot = (function(){
         pressure += (b.c===opp ? w : -w)*danger; }                      // enemy squeezed +, mine squeezed -
     }
     return 30*(st.lostTroopers[opp]-st.lostTroopers[me])
-         + 1.5*(area[me]-area[opp])
-         + 0.8*(coverage(st,me)-coverage(st,opp))    // spread troopers for deployment reach (all troopers)
+         + 1.5*(area[me]-area[opp])                   // area now charges lost troopers (negative komi)
+         + 0.8*(coverage(st,me)-coverage(st,opp))    // value a trooper by the deploy space it opens
          - 3.0*(myClump-oppClump)                     // don't pile troopers contiguously
+         + 2.0*(Math.min(st.reserve[me],2)-Math.min(st.reserve[opp],2))  // keep 1-2 troopers to replace losses
          + pressure;
   }
   // 1-ply greedy. `blunder` (0..1) is the chance of playing a random legal move

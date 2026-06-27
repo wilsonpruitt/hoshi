@@ -270,6 +270,52 @@ CONFIGS = {
 }
 
 
+def _winrate_vs_panel(arg):
+    """win-rate of weight vector w vs every panel member, color-swapped."""
+    w, panel, cfg, gpp, seed = arg
+    from .harness import play_game
+    wins = games = 0
+    for p in panel:
+        for g in range(gpp):
+            r = play_game(cfg, WeightGreedy(w, seed=seed + g), WeightGreedy(p, seed=seed + 100 + g),
+                          "beachhead", "beachhead", seed=seed + g)
+            wins += 1 if r.winner == 0 else (0.5 if r.winner == -1 else 0); games += 1
+            r2 = play_game(cfg, WeightGreedy(p, seed=seed + 200 + g), WeightGreedy(w, seed=seed + 300 + g),
+                           "beachhead", "beachhead", seed=seed + 500 + g)
+            wins += 1 if r2.winner == 1 else (0.5 if r2.winner == -1 else 0); games += 1
+    return wins / games
+
+
+def strength(which="base-r4", iters=18, lam=6, gpp=4, workers=3, seed=0, max_plies=120):
+    """(1+lambda) hill-climb: evolve ONE weight vector to maximize win-rate vs a
+    fixed seed panel (a stable yardstick). Output = a strong, FAST 1-ply bot."""
+    import time
+    from dataclasses import replace
+    cfg = replace(CONFIGS[which], max_plies=max_plies); rng = random.Random(seed)
+    panel = [tuple(w) for w in SEED_STYLES.values()]               # fixed strength yardstick
+    champ = list(SEED_STYLES["balanced"])
+    print(f"# strength ruleset={which} iters={iters} lambda={lam} games/opp={gpp}", flush=True)
+
+    def eval_many(cands, it):
+        jobs = [(tuple(c), panel, cfg, gpp, seed + it * 9000 + k * 13) for k, c in enumerate(cands)]
+        with Pool(workers) as pool:
+            return pool.map(_winrate_vs_panel, jobs)
+
+    champ_wr = eval_many([champ], 0)[0]
+    print(f"  start: balanced wr={champ_wr:.3f}", flush=True)
+    for it in range(iters):
+        t0 = time.time()
+        mutants = [mutate(champ, rng, rate=0.6, scale=0.3) for _ in range(lam)]
+        wrs = eval_many(mutants, it + 1)
+        bi = max(range(lam), key=lambda k: wrs[k])
+        improved = wrs[bi] > champ_wr
+        if improved:
+            champ, champ_wr = mutants[bi], wrs[bi]
+        print(f"  iter {it}: best mutant wr={wrs[bi]:.3f} champ wr={champ_wr:.3f} "
+              f"{'*' if improved else ' '}  [{time.time()-t0:.0f}s]", flush=True)
+    return {"weights": [round(x, 3) for x in champ], "winrate": round(champ_wr, 3)}
+
+
 def describe(w):
     """Name a style by which feature it leans on, relative to the balanced baseline."""
     base = SEED_STYLES["balanced"]
@@ -283,6 +329,16 @@ def main():
     import sys
     from .diversity import diversity_report, diversity_objective
     mode = sys.argv[1] if len(sys.argv) > 1 else "base-r4"
+
+    if mode == "strength":
+        which = sys.argv[2] if len(sys.argv) > 2 else CANON
+        iters = int(sys.argv[3]) if len(sys.argv) > 3 else 18
+        res = strength(which=which, iters=iters)
+        w = res["weights"]
+        print(f"\nSTRONGEST 1-ply weights ({describe(w)}):")
+        print(f"  [cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}]")
+        print(f"  win-rate vs seed panel = {res['winrate']}  (a FAST bot — 1-ply, no MCTS lag)")
+        return
 
     if mode == "evolve":
         which = sys.argv[2] if len(sys.argv) > 2 else CANON

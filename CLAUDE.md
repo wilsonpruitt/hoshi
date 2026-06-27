@@ -39,6 +39,29 @@ tester feedback — revisit whether mobile should force R3 on 9×9 or expose a
 range control. See `trooper_diversity.py` (modes: pilot/full/encircle/rescue/
 mobile/step/tune) for the measurement harness behind these numbers.
 
+## Strategic runs + bot roadmap (the "optimize the player" track)
+`hoshi/coevolve.py` makes the eval a weight vector over features (cap, area, cov,
+spc=anti-clump, prs) — the weights ARE the strategy. Two loops, both pinned to ONE
+ruleset (CANON = `base-r4` = live shipped default; mobile/encircle get their own):
+1. **DIVERSITY** — coevolve a population scored on intransitivity → distinct strong
+   styles (aggro/territorial/expansionist/squeeze) for watch variance + bot
+   personalities. (`coevolve.py evolve base-r4 N`; seed-tournament baseline
+   intransitivity ≈0.149.)
+2. **STRENGTH** — optimize one weight vector for win-rate → a **fast** Hard/Expert
+   bot. Key insight: a well-tuned 1-ply `WeightGreedy` is strong AND instant (no
+   MCTS lag / watch-spurts) because the intelligence is in the weights, not deep
+   per-turn search.
+
+**Bot SPEED roadmap** (cheapest first; kills watch-mode spurts on strong tiers):
+- **Opening book** — precompute the first ~6-10 plies (small tree); instant early
+  moves by lookup.
+- **Fast-greedy strength bot** — ship the strength-run weights as a 1-ply tier
+  (Expert) — strong, zero search lag.
+- **Tree-reuse / transposition cache** — if MCTS stays for the very top tier.
+- **Policy net (Maia-style)** — train on self-play data → one forward pass/move,
+  no search. The endgame; WASM-ing the engine is the alternative heavy lift.
+  (Full lookup tables are infeasible — Hoshi is Go-scale.)
+
 ## Future phases (parked — not started)
 - **Terrain / landmarks (Dominic's idea).** Themed board backgrounds with FIXED
   impassable cells you must play around — a mountain, urban-warfare rubble, water,

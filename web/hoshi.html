@@ -489,7 +489,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       ` &nbsp;&ndash;&nbsp; <span class="dot" style="background:var(--red)"></span><b>${sc[1]}</b>`;
     status();
     persist();
-    if(s.over){ if(!winShown){ winShown=true; showWin(); } }
+    if(s.over){ if(!winShown){ winShown=true; showWin(); } if(online) reportResult(); }
     else { winShown=false; hideWin(); }
   }
   // owner[i] = 0/1 for an empty point fully enclosed by one color, else null
@@ -759,6 +759,16 @@ if(typeof module!=='undefined') module.exports=Bot;
       toast(error.message||"Move rejected");
       if(hist.length){ s=hist.pop(); moveSeq++; lastMove=null; render(); }
     }
+  }
+  // Game over (by local replay): record this seat's result. The server finalizes
+  // games.winner only when BOTH seats report the same value (see migration), so
+  // each client reports its own replayed winner once. Idempotent per game.
+  async function reportResult(){
+    if(!hoshiDB || !online || online.reported || !s.over) return;
+    online.reported=true;
+    try{ await hoshiDB.rpc("report_result",
+      {p_game_id:online.gameId, p_seat_token:online.token, p_winner:s.winner}); }
+    catch(e){ console.error(e); online.reported=false; }   // let a later render retry
   }
 
   function init(){

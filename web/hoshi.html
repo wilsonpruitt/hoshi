@@ -789,10 +789,14 @@ if(typeof module!=='undefined') module.exports=Bot;
     try{
       const g=await hoshiDB.from("games").select("initial_state,status,winner").eq("id",online.gameId).single();
       if(g.error) throw g.error;
+      const init=g.data.initial_state;
+      if(!init || !init.N || !Array.isArray(init.board)){       // malformed / not a real game
+        toast("That game can't be loaded — back to the menu."); clearOnline(); showLanding(); return false;
+      }
       if(online) online.waiting = (g.data.status==="open");   // host still awaiting an opponent
       const mv=await hoshiDB.from("moves").select("ply,move").eq("game_id",online.gameId).order("ply");
       if(mv.error) throw mv.error;
-      let st=stateFromObj(g.data.initial_state);
+      let st=stateFromObj(init);
       for(const row of mv.data){ const ns=Hoshi.apply(st,row.move); if(ns) st=ns; }
       players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       buildBoard(); render(); subscribeOnline(); return true;

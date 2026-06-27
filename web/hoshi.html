@@ -3,7 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HOSHI</title>
+<title>HOSHI — paratroopers, drones, territory</title>
+<meta name="description" content="A fast two-path strategy game: drop paratroopers, deploy drones in range, surround to capture. Win by decapitation or by holding the most ground. Play free vs the computer or a friend.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://playhoshi.com/">
+<meta property="og:title" content="HOSHI — paratroopers, drones, territory">
+<meta property="og:description" content="Drop anchors, deploy drones in range, surround to capture. Win by decapitation — or by holding the most ground. Play free in your browser.">
+<meta property="og:image" content="https://playhoshi.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="HOSHI — paratroopers, drones, territory">
+<meta name="twitter:description" content="Drop anchors, deploy drones in range, surround to capture. Play free in your browser.">
+<meta name="twitter:image" content="https://playhoshi.com/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -271,7 +283,12 @@ const Bot = (function(){
   // this call". Sized for the largest board (13x13).
   const _lit=new Int32Array(169); let _gen=0;
   function coverage(st, color){
-    const N=st.N, R=st.R, ready=Hoshi.readyTroopers(st,color);
+    const N=st.N, R=st.R;
+    // Count ALL of this color's troopers, not just *ready* ones. A freshly placed
+    // trooper can't deploy yet, but its future reach is exactly what should reward
+    // SPREADING it out at the moment you place it. Counting only ready troopers made
+    // the bot blind to spacing the very move it's deciding — so troopers clumped.
+    const ready=[]; for(let i=0;i<st.board.length;i++){const b=st.board[i]; if(b&&b.k==='T'&&b.c===color) ready.push(i);}
     if(!ready.length) return 0;
     const g=++_gen; let n=0;
     for(const t of ready){ const tr=(t/N)|0, tc=t%N;
@@ -284,9 +301,16 @@ const Bot = (function(){
     if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
     const opp=1-me;
     const area=Hoshi.areaScore(st);                 // stones + enclosed territory, per color
-    let pressure=0; const seen=new Set();
+    let pressure=0, myClump=0, oppClump=0; const seen=new Set();
     for(let i=0;i<st.board.length;i++){
-      const b=st.board[i]; if(!b || seen.has(i)) continue;
+      const b=st.board[i]; if(!b) continue;
+      // Anti-clustering: orthogonally adjacent friendly troopers share liberties (so
+      // the enemy can wall the whole blob and decap several at once) and overlap their
+      // deploy range (wasted reach). Penalize my contiguous troopers; reward the
+      // opponent's. q>i counts each adjacent trooper pair exactly once.
+      if(b.k==='T') for(const q of Hoshi.orth(st.N,i)){ if(q>i){ const bb=st.board[q];
+        if(bb&&bb.k==='T'&&bb.c===b.c){ b.c===me?myClump++:oppClump++; } } }
+      if(seen.has(i)) continue;
       const {group,libs}=Hoshi.groupLib(st.N,st.board,i);
       let hasT=false; for(const g of group){ seen.add(g); if(st.board[g].k==='T') hasT=true; }
       const danger = libs<=1?1.0 : libs===2?0.45 : libs===3?0.15 : 0;   // closer to capture = bigger
@@ -295,7 +319,8 @@ const Bot = (function(){
     }
     return 30*(st.lostTroopers[opp]-st.lostTroopers[me])
          + 1.5*(area[me]-area[opp])
-         + 0.4*(coverage(st,me)-coverage(st,opp))    // spread troopers for deployment reach
+         + 0.8*(coverage(st,me)-coverage(st,opp))    // spread troopers for deployment reach (all troopers)
+         - 3.0*(myClump-oppClump)                     // don't pile troopers contiguously
          + pressure;
   }
   // 1-ply greedy. `blunder` (0..1) is the chance of playing a random legal move

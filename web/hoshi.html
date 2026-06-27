@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HOSHI — paratroopers, drones, territory</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="description" content="A fast two-path strategy game: drop paratroopers, deploy drones in range, surround to capture. Win by decapitation or by holding the most ground. Play free vs the computer or a friend.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://playhoshi.com/">
@@ -141,17 +142,24 @@
     <option value="bylink">Play by link (paste)</option>
     <option value="online">Play online (live)</option>
   </select>
-  <select id="diff" title="Computer strength — in Watch mode this is Blue's strength">
-    <option value="easy">Easy</option>
-    <option value="medium" selected>Medium</option>
-    <option value="hard">Hard</option>
-  </select>
-  <span id="diffVs" style="display:none;color:var(--muted);font-size:12px;align-self:center">vs</span>
-  <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
-    <option value="easy">Easy</option>
-    <option value="medium">Medium</option>
-    <option value="hard" selected>Hard</option>
-  </select>
+  <span class="diffgroup" style="display:inline-flex;align-items:center;gap:6px">
+    <select id="diff" title="Computer strength — in Watch mode this is Blue's strength">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+    <span id="diffVs" style="display:none;color:var(--muted);font-size:12px">vs</span>
+    <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
+      <option value="easy">Easy</option>
+      <option value="medium">Medium</option>
+      <option value="hard" selected>Hard</option>
+    </select>
+    <select id="watchSpeed" title="Playback speed (Watch mode)" style="display:none">
+      <option value="normal">Normal</option>
+      <option value="fast">Fast</option>
+      <option value="turbo">Turbo</option>
+    </select>
+  </span>
   <select id="size">
     <option value="9">9 &times; 9 (faster)</option>
     <option value="13">13 &times; 13</option>
@@ -568,7 +576,9 @@ if(typeof module!=='undefined') module.exports=Bot;
     const seq=moveSeq, depthCap=s.N>=13?28:36;
     const {sims,blunder}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
     botStart=Date.now();
-    botMinThink = ambient ? 650 : (document.getElementById("mode").value==='cpucpu' ? 800 : 450);   // watchable pace
+    const watching = document.getElementById("mode").value==='cpucpu';
+    const spd = {normal:800, fast:250, turbo:40}[document.getElementById("watchSpeed").value] ?? 800;
+    botMinThink = ambient ? 650 : (watching ? spd : 450);   // watch speed: Normal / Fast / Turbo
     if(worker){ worker.postMessage({state:s, sims, blunder, depthCap, seq}); return; }
     setTimeout(()=>{   // synchronous fallback
       if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;
@@ -845,11 +855,12 @@ if(typeof module!=='undefined') module.exports=Bot;
   }
 
   // --- Phase 6: persistence & sharing ---
-  const cfgKeys=["mode","size","variant","diff","diff2"];
-  function syncDiffUI(){   // the Red-strength selector only makes sense while watching cpu-vs-cpu
+  const cfgKeys=["mode","size","variant","diff","diff2","watchSpeed"];
+  function syncDiffUI(){   // the Red-strength selector + speed only make sense while watching cpu-vs-cpu
     const watch=document.getElementById("mode").value==='cpucpu';
     document.getElementById("diff2").style.display=watch?"":"none";
     document.getElementById("diffVs").style.display=watch?"":"none";
+    document.getElementById("watchSpeed").style.display=watch?"":"none";
   }
   function persistSettings(){ try{ const c={}; cfgKeys.forEach(k=>c[k]=document.getElementById(k).value);
     c.encircle=document.getElementById("encircle").checked;
@@ -1108,6 +1119,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("mobile").onchange=start;
   document.getElementById("diff").onchange=persistSettings;
   document.getElementById("diff2").onchange=persistSettings;
+  document.getElementById("watchSpeed").onchange=persistSettings;
   const rulesModal=document.getElementById("rules");
   const showRules=()=>rulesModal.classList.add("show");
   const hideRules=()=>rulesModal.classList.remove("show");

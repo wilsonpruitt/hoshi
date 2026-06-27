@@ -22,7 +22,9 @@ Features (all from `me`'s view, opponent-relative):
   prs   liberty pressure    enemy squeezed + / mine -      (trooper groups 8x)
 """
 from __future__ import annotations
-import random
+import random, math
+from multiprocessing import Pool
+import numpy as np
 from .engine import (RuleConfig, legal_moves, apply_move, area_score,
                      neighbors, cheb, _group_of)
 
@@ -132,9 +134,132 @@ def seed_players(seed=0):
             for i, (n, w) in enumerate(SEED_STYLES.items())]
 
 
+# ---------------------------------------------------------------------------
+# Coevolution: search the weight-space for a DIVERSE population (cycle-beat,
+# no single dominant) — measured by intransitivity / dominance. Greedy players
+# (fast) for the search; MCTS-validate the survivors afterwards.
+# ---------------------------------------------------------------------------
+# weight order:        [cap,  area, cov,  spc, prs]
+WMIN = np.array([8.0,  0.3, 0.2, 0.0, 0.3])
+WMAX = np.array([50.0, 4.0, 2.6, 5.0, 4.0])
+
+
+def random_weights(rng):
+    return [round(rng.uniform(lo, hi), 3) for lo, hi in zip(WMIN, WMAX)]
+
+
+def mutate(w, rng, rate=0.5, scale=0.25):
+    out = list(w)
+    for k in range(len(out)):
+        if rng.random() < rate:
+            out[k] *= math.exp(rng.gauss(0, scale))          # multiplicative jiggle
+        out[k] = float(min(WMAX[k], max(WMIN[k], out[k])))
+    return [round(x, 3) for x in out]
+
+
+def crossover(a, b, rng):
+    return [a[k] if rng.random() < 0.5 else b[k] for k in range(len(a))]
+
+
+def _match(arg):
+    """One game between two weight vectors; returns the winner (0/1/-1)."""
+    wi, wj, cfg, su_i, su_j, seed = arg
+    from .harness import play_game
+    r = play_game(cfg, WeightGreedy(wi, seed=seed), WeightGreedy(wj, seed=seed + 1),
+                  su_i, su_j, seed=seed)
+    return r.winner
+
+
+def payoff_matrix_par(cfg, pop, setups, gpp, seed=0, workers=3):
+    n = len(pop)
+    jobs, meta = [], []
+    for i in range(n):
+        for j in range(n):
+            for g in range(gpp):
+                jobs.append((pop[i], pop[j], cfg, setups[i], setups[j], seed + g)); meta.append((i, j, 0))
+                jobs.append((pop[j], pop[i], cfg, setups[j], setups[i], seed + 500 + g)); meta.append((i, j, 1))
+    with Pool(workers) as pool:
+        res = pool.map(_match, jobs)
+    W = np.zeros((n, n)); cnt = np.zeros((n, n))
+    for (i, j, swap), winner in zip(meta, res):
+        win = (winner == 0) if swap == 0 else (winner == 1)
+        W[i][j] += 1.0 if win else (0.5 if winner == -1 else 0.0); cnt[i][j] += 1
+    return W / np.maximum(cnt, 1)
+
+
+def diversity_metrics(W):
+    from .diversity import hodge, alpha_rank, dominance, nash_zero_sum, entropy
+    P = (W + 1 - W.T) / 2                 # symmetrize (per diversity.py: W[i][j],W[j][i] are different games)
+    h = hodge(P)
+    dom, _ = dominance(W)
+    nash = nash_zero_sum(W - W.T)
+    pi = alpha_rank(W)
+    return {"intransitivity": round(h["intransitivity"], 3),
+            "dominance": round(dom, 3),
+            "nash_support": int((nash > 0.02).sum()),
+            "alpha_entropy": round(entropy(pi), 3),
+            "alpha": pi}
+
+
+def pop_objective(m):
+    # push intransitivity UP, punish a dominant style (>0.5 win-rate vs field)
+    return round(m["intransitivity"] - 0.6 * max(0.0, m["dominance"] - 0.5), 4)
+
+
+def individual_fitness(W):
+    """Reward distinct (novel) AND cyclic (neither dominant nor dominated) members."""
+    n = len(W)
+    avg = W.mean(axis=1)                                   # avg win-rate vs field
+    fit = []
+    for i in range(n):
+        novelty = np.mean([np.abs(W[i] - W[j]).mean() for j in range(n) if j != i]) if n > 1 else 0.0
+        cyclic = min(avg[i], 1 - avg[i])                   # ~0.5 = beats some, loses to some
+        fit.append(novelty + cyclic)
+    return fit
+
+
+def coevolve(which="base-r4", pop_size=8, gens=5, gpp=3, workers=3, seed=0, max_plies=120):
+    import time
+    from dataclasses import replace
+    cfg = replace(CONFIGS[which], max_plies=max_plies)   # cap game length: greedy is slow,
+    rng = random.Random(seed)                            # and capped territory scoring is fine for ranking
+    pop = [list(w) for w in SEED_STYLES.values()]
+    while len(pop) < pop_size:
+        pop.append(random_weights(rng))
+    pop = pop[:pop_size]
+    setups = ["beachhead"] * pop_size
+    best = None
+    print(f"# coevolve ruleset={which} pop={pop_size} gens={gens} games/pair={gpp} workers={workers}", flush=True)
+    for gen in range(gens):
+        t0 = time.time()
+        W = payoff_matrix_par(cfg, [tuple(w) for w in pop], setups, gpp, seed=seed + gen * 1000, workers=workers)
+        m = diversity_metrics(W); score = pop_objective(m)
+        if best is None or score > best["score"]:
+            best = {"score": score, "pop": [list(w) for w in pop], "metrics": m, "W": W, "gen": gen}
+        print(f"  gen {gen}: intransitivity={m['intransitivity']} dominance={m['dominance']} "
+              f"nash_support={m['nash_support']} obj={score}  [{time.time()-t0:.0f}s]", flush=True)
+        # selection + breeding
+        fit = individual_fitness(W)
+        order = sorted(range(pop_size), key=lambda i: -fit[i])
+        keep = [pop[i] for i in order[:max(2, pop_size // 2)]]
+        newpop = [list(w) for w in keep]
+        while len(newpop) < pop_size:
+            if rng.random() < 0.25:
+                newpop.append(random_weights(rng))                 # immigrant (exploration)
+            else:
+                a, b = rng.sample(keep, 2)
+                newpop.append(mutate(crossover(a, b, rng), rng))
+        pop = newpop
+    return best
+
+
 # A strategy is only meaningful against ONE fixed ruleset — encircle/mobile/range
 # are different GAMES, so every strategic run pins one of these and holds it. Each
 # distinct ruleset we ship/feature gets its OWN diversity + strength run.
+# LOCKED canonical ruleset for strategic runs: base-r4 = the live shipped default
+# (9x9, range 4, both optional dials off), so learned styles/eval transfer straight
+# into the game. mobile/encircle, if featured, get their own runs.
+CANON = "base-r4"
 CONFIGS = {
     # the base shipped game (both optional dials OFF) — what most players get
     "base-r4": RuleConfig(n=9, drone_range=4, troopers=5, capture_to_win=3),
@@ -145,10 +270,39 @@ CONFIGS = {
 }
 
 
+def describe(w):
+    """Name a style by which feature it leans on, relative to the balanced baseline."""
+    base = SEED_STYLES["balanced"]
+    ratios = [w[k] / base[k] if base[k] else 0 for k in range(len(w))]
+    lead = max(range(len(w)), key=lambda k: ratios[k])
+    tag = {0: "decap-hunter", 1: "territorial", 2: "expansionist", 3: "spacing", 4: "squeeze"}[lead]
+    return tag
+
+
 def main():
     import sys
     from .diversity import diversity_report, diversity_objective
-    which = sys.argv[1] if len(sys.argv) > 1 else "base-r4"
+    mode = sys.argv[1] if len(sys.argv) > 1 else "base-r4"
+
+    if mode == "evolve":
+        which = sys.argv[2] if len(sys.argv) > 2 else CANON
+        gens = int(sys.argv[3]) if len(sys.argv) > 3 else 6
+        best = coevolve(which=which, gens=gens)
+        print(f"\nBEST population (gen {best['gen']}, obj={best['score']}, "
+              f"intransitivity={best['metrics']['intransitivity']}, "
+              f"dominance={best['metrics']['dominance']}):")
+        # show the styles carrying real alpha-rank mass (the live, diverse ones)
+        pi = best["metrics"]["alpha"]
+        ranked = sorted(range(len(best["pop"])), key=lambda i: -pi[i])
+        for i in ranked:
+            w = best["pop"][i]
+            mark = "*" if pi[i] > 0.05 else " "
+            print(f" {mark} alpha={pi[i]:.3f}  {describe(w):>12}  "
+                  f"[cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}]")
+        print("(* = carries equilibrium mass — the styles worth shipping as personalities)")
+        return
+
+    which = mode
     gpp = int(sys.argv[2]) if len(sys.argv) > 2 else 6
     cfg = CONFIGS[which]
     players = seed_players()

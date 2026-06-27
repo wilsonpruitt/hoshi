@@ -116,7 +116,11 @@ const Hoshi = (function(){
   // move = {type:'trooper'|'drone'|'pass', i} | {type:'move', from, to}
   function apply(s, move){
     const ns=clone(s), me=s.toMove;
-    if(move.type==='pass'){ ns.ply++; endTerritory(ns); return ns; }  // a pass ends & scores
+    if(move.type==='pass'){           // Go rule: TWO passes in a row end the game & score
+      ns.passes=(ns.passes||0)+1; ns.toMove^=1; ns.ply++;
+      if(ns.passes>=2) endTerritory(ns);
+      return ns;
+    }
 
     if(move.type==='move'){              // mobile drone: relocate within trooper shadow
       if(!ns.mobileDrones)return null;

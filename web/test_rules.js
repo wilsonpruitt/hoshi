@@ -136,5 +136,21 @@ for (const N of [9, 13]) for (const v of ['beachhead', 'garrison', 'bastion', 'f
   A(ns3 && ns3.board[E] === null, 'mobile move onto the last liberty captures');
 }
 
+// 8) two-pass rule: one pass doesn't end the game; two in a row do (so you can't
+//    end it alone on move 2 and win on near-empty territory).
+{
+  const N = 9, s = H.newState(N, 'garrison'); s.toMove = 0; s.reserve = [5, 5];
+  const a = H.apply(s, { type: 'pass' });
+  A(a && !a.over, 'one pass does not end the game');
+  const b = H.apply(a, { type: 'pass' });
+  A(b && b.over, 'two passes in a row end and score');
+  // a real move between passes resets the streak
+  const c = H.apply(s, { type: 'pass' });
+  const d = H.apply(c, { type: 'trooper', i: H.idx(N, 4, 4) });
+  A(d && !d.over, 'a move after a pass keeps the game going');
+  const e = H.apply(d, { type: 'pass' });
+  A(e && !e.over, 'a lone pass after a move is only the first pass again');
+}
+
 console.log(`\n${ok} checks passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

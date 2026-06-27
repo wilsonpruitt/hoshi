@@ -130,7 +130,7 @@
 <div class="controls">
   <button id="mTrooper">Place trooper</button>
   <button id="mDrone">Deploy drone</button>
-  <button id="pass">End &amp; score</button>
+  <button id="pass" title="Pass your turn. Two passes in a row end the game and score territory.">Pass</button>
   <button id="undo">Undo</button>
   <button id="new">New game</button>
   <button id="menuBtn" title="Back to the main menu">Menu</button>
@@ -242,7 +242,7 @@
     <ul>
       <li><b>Place a trooper</b> (the star) on any empty point — your anchor.</li>
       <li><b>Deploy a drone</b> on a lit point within range of a <b>ready</b> trooper.</li>
-      <li><b>End &amp; score</b> — finish the game and count territory.</li>
+      <li><b>Pass</b> — skip your turn. <b>Two passes in a row</b> end the game and count territory (so you can't end it alone on move 2).</li>
     </ul>
     <h3>Key rules</h3>
     <ul>
@@ -577,8 +577,9 @@ if(typeof module!=='undefined') module.exports=Bot;
     const {sims,blunder}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
     botStart=Date.now();
     const watching = document.getElementById("mode").value==='cpucpu';
-    const spd = {normal:800, fast:250, turbo:40}[document.getElementById("watchSpeed").value] ?? 800;
-    botMinThink = ambient ? 650 : (watching ? spd : 450);   // watch speed: Normal / Fast / Turbo
+    const effSpeed = (watching && watchBotsAreFast()) ? document.getElementById("watchSpeed").value : "normal";
+    const spd = {normal:800, fast:250, turbo:40}[effSpeed] ?? 800;
+    botMinThink = ambient ? 650 : (watching ? spd : 450);   // watch speed: Normal / Fast / Turbo (low tiers only)
     if(worker){ worker.postMessage({state:s, sims, blunder, depthCap, seq}); return; }
     setTimeout(()=>{   // synchronous fallback
       if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;
@@ -841,8 +842,12 @@ if(typeof module!=='undefined') module.exports=Bot;
     const who=s.toMove===0?"Blue":"Red";
     const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
     if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
-    if(Hoshi.legalMoves(s).length===1){   // only the end-game action remains
-      el.innerHTML=`${dot}${who} has no moves left — press <b>End &amp; score</b>.`;
+    if(s.passes===1){   // opponent just passed — one more pass ends the game
+      el.innerHTML=`${dot}${who} to move — opponent <b>passed</b>. <b>Pass</b> too to end &amp; score, or play on.`;
+      return;
+    }
+    if(Hoshi.legalMoves(s).length===1){   // only passing remains
+      el.innerHTML=`${dot}${who} has no moves left — press <b>Pass</b> (two passes end &amp; score).`;
       return;
     }
     if(moveSrc!==null){ el.innerHTML=`${dot}${who} — click a lit point to move the drone there, or click it again to cancel.`; return; }
@@ -850,17 +855,23 @@ if(typeof module!=='undefined') module.exports=Bot;
     let line=`${dot}${who} to move — ${act}.`;
     if(s.mobileDrones) line += ` <span style="color:var(--muted)">· or click one of your drones to relocate it.</span>`;
     const filled = s.board.filter(Boolean).length/(s.N*s.N);
-    if(filled>0.6) line += ` <span style="color:var(--muted)">· or End &amp; score if you're done (${sc[0]>sc[1]?"Blue ahead":sc[1]>sc[0]?"Red ahead":"tied"} ${sc[0]}–${sc[1]}).</span>`;
+    if(filled>0.6) line += ` <span style="color:var(--muted)">· or <b>Pass</b> if you're done — two passes end it (${sc[0]>sc[1]?"Blue ahead":sc[1]>sc[0]?"Red ahead":"tied"} ${sc[0]}–${sc[1]}).</span>`;
     el.innerHTML=line;
   }
 
   // --- Phase 6: persistence & sharing ---
   const cfgKeys=["mode","size","variant","diff","diff2","watchSpeed"];
+  function watchBotsAreFast(){   // speed control applies only when NEITHER watched bot is Hard (MCTS)
+    return document.getElementById("diff").value!=='hard'
+        && document.getElementById("diff2").value!=='hard';
+  }
   function syncDiffUI(){   // the Red-strength selector + speed only make sense while watching cpu-vs-cpu
     const watch=document.getElementById("mode").value==='cpucpu';
     document.getElementById("diff2").style.display=watch?"":"none";
     document.getElementById("diffVs").style.display=watch?"":"none";
-    document.getElementById("watchSpeed").style.display=watch?"":"none";
+    // Fast/Turbo only smooth out the lower (greedy) tiers — Hard's MCTS think-time
+    // dominates and makes them lurch in spurts. Hide speed if either side is Hard.
+    document.getElementById("watchSpeed").style.display=(watch && watchBotsAreFast())?"":"none";
   }
   function persistSettings(){ try{ const c={}; cfgKeys.forEach(k=>c[k]=document.getElementById(k).value);
     c.encircle=document.getElementById("encircle").checked;
@@ -1118,7 +1129,8 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("encircle").onchange=start;
   document.getElementById("mobile").onchange=start;
   document.getElementById("diff").onchange=persistSettings;
-  document.getElementById("diff2").onchange=persistSettings;
+  document.getElementById("diff").onchange=()=>{ persistSettings(); syncDiffUI(); };
+  document.getElementById("diff2").onchange=()=>{ persistSettings(); syncDiffUI(); };
   document.getElementById("watchSpeed").onchange=persistSettings;
   const rulesModal=document.getElementById("rules");
   const showRules=()=>rulesModal.classList.add("show");

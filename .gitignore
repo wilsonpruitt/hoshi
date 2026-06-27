@@ -7,6 +7,9 @@ venv/
 # OS
 .DS_Store
 
+# Supabase CLI local state
+supabase/.temp/
+
 # Sweep / run outputs (kept out of git; regenerate with sweep.py)
 *.out
 /tmp_sweeps/

@@ -147,12 +147,14 @@
       <option value="easy">Easy</option>
       <option value="medium" selected>Medium</option>
       <option value="hard">Hard</option>
+      <option value="expert">Expert</option>
     </select>
     <span id="diffVs" style="display:none;color:var(--muted);font-size:12px">vs</span>
     <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
       <option value="easy">Easy</option>
       <option value="medium">Medium</option>
       <option value="hard" selected>Hard</option>
+      <option value="expert">Expert</option>
     </select>
     <select id="watchSpeed" title="Playback speed (Watch mode)" style="display:none">
       <option value="normal">Normal</option>
@@ -305,6 +307,11 @@ const Bot = (function(){
         if(_lit[i]!==g && st.board[i]==null){ _lit[i]=g; n++; } } }
     return n;
   }
+  // Eval weights per tier. W_DEFAULT reproduces the hand-tuned Medium/Hard eval;
+  // a tier (Expert) can pass a learned vector — the eval is otherwise identical, so
+  // strength comes from the weights, not deeper search (a fast 1-ply Expert).
+  const W_DEFAULT={cap:30, area:1.5, cov:0.8, spc:3.0, res:2.0, prs:1.0};
+  let W=W_DEFAULT;
   function evaluate(st, me){
     if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
     const opp=1-me;
@@ -325,12 +332,12 @@ const Bot = (function(){
       if(danger){ const w=hasT?8:2;                                      // trooper group >> drone group
         pressure += (b.c===opp ? w : -w)*danger; }                      // enemy squeezed +, mine squeezed -
     }
-    return 30*(st.lostTroopers[opp]-st.lostTroopers[me])
-         + 1.5*(area[me]-area[opp])                   // area now charges lost troopers (negative komi)
-         + 0.8*(coverage(st,me)-coverage(st,opp))    // value a trooper by the deploy space it opens
-         - 3.0*(myClump-oppClump)                     // don't pile troopers contiguously
-         + 2.0*(Math.min(st.reserve[me],2)-Math.min(st.reserve[opp],2))  // keep 1-2 troopers to replace losses
-         + pressure;
+    return W.cap*(st.lostTroopers[opp]-st.lostTroopers[me])
+         + W.area*(area[me]-area[opp])                // area now charges lost troopers (negative komi)
+         + W.cov*(coverage(st,me)-coverage(st,opp))   // value a trooper by the deploy space it opens
+         - W.spc*(myClump-oppClump)                    // don't pile troopers contiguously
+         + W.res*(Math.min(st.reserve[me],2)-Math.min(st.reserve[opp],2))  // keep 1-2 troopers to replace losses
+         + W.prs*pressure;
   }
   // 1-ply greedy. `blunder` (0..1) is the chance of playing a random legal move
   // instead of the best — the Easy tier's handle: a strong eval makes pure greedy
@@ -343,7 +350,8 @@ const Bot = (function(){
   // rule — it's the genuine cost of spending a turn without adding a piece.
   const MOVE_TEMPO=2.0;
   const tempo=m=>m.type==='move'?MOVE_TEMPO:0;
-  function botMove(st, blunder){
+  function botMove(st, blunder, weights){
+    W = weights||W_DEFAULT;
     const me=st.toMove, filled=st.board.filter(Boolean).length/(st.N*st.N);
     const legal=[]; let best=null, bestM={type:'pass'};
     for(const m of Hoshi.legalMoves(st)){
@@ -406,7 +414,8 @@ const Bot = (function(){
     if(s2.over) return s2.winner;
     const v=evaluate(s2,0); return v>0?0:(v<0?1:-1);
   }
-  function mctsMove(root,sims,width,depthCap){
+  function mctsMove(root,sims,width,depthCap,weights){
+    W = weights||W_DEFAULT;
     const C=1.4;
     const rootNode={state:root,parent:null,move:null,mover:null,children:[],untried:null,N:0,W:0};
     for(let n=0;n<sims;n++){
@@ -545,8 +554,12 @@ if(typeof module!=='undefined') module.exports=Bot;
     const d=document.getElementById(watch&&seat===1?"diff2":"diff").value;
     if(d==='easy') return {sims:0,   blunder:0.4};   // greedy that slips often — beatable
     if(d==='hard') return {sims:240, blunder:0};     // MCTS lookahead
+    if(d==='expert') return {sims:0, blunder:0, weights:EXPERT_WEIGHTS}; // fast 1-ply, learned eval
     return {sims:0, blunder:0};                       // Medium = clean, sharp 1-ply greedy
   }
+  // Expert = the strength-run's learned weight vector, played as a FAST 1-ply bot
+  // (no MCTS = no think-time/spurts). Tuned on base-r4 with the trooper-loss penalty.
+  const EXPERT_WEIGHTS={cap:43.5, area:1.18, cov:0.48, spc:4.60, res:2.0, prs:1.08};
   let botStart=0, botMinThink=0;                      // pacing so moves are watchable
   function pacedApply(mv,seq){                        // hold the move until min think-time elapses
     setTimeout(()=>applyBotMove(mv,seq), Math.max(0, botMinThink-(Date.now()-botStart)));
@@ -563,7 +576,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       const src = "importScripts(" + JSON.stringify(rulesURL) + ");\n"
         + document.getElementById("bot-kernel").textContent + "\n"
         + "onmessage=function(e){var d=e.data;"
-        + "var mv=d.sims>0?Bot.mctsMove(d.state,d.sims,8,d.depthCap):Bot.botMove(d.state,d.blunder);"
+        + "var mv=d.sims>0?Bot.mctsMove(d.state,d.sims,8,d.depthCap,d.weights):Bot.botMove(d.state,d.blunder,d.weights);"
         + "postMessage({move:mv,seq:d.seq});};";
       worker=new Worker(URL.createObjectURL(new Blob([src],{type:'application/javascript'})));
       worker.onmessage=(e)=>pacedApply(e.data.move,e.data.seq);
@@ -575,16 +588,16 @@ if(typeof module!=='undefined') module.exports=Bot;
     // ambient demo plays a snappy, lively greedy (a little blunder for variety); real
     // games use the chosen tier.
     const seq=moveSeq, depthCap=s.N>=13?28:36;
-    const {sims,blunder}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
+    const {sims,blunder,weights}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
     botStart=Date.now();
     const watching = document.getElementById("mode").value==='cpucpu';
     const effSpeed = (watching && watchBotsAreFast()) ? document.getElementById("watchSpeed").value : "normal";
     const spd = {normal:800, fast:250, turbo:40}[effSpeed] ?? 800;
     botMinThink = ambient ? 650 : (watching ? spd : 450);   // watch speed: Normal / Fast / Turbo (low tiers only)
-    if(worker){ worker.postMessage({state:s, sims, blunder, depthCap, seq}); return; }
+    if(worker){ worker.postMessage({state:s, sims, blunder, depthCap, seq, weights}); return; }
     setTimeout(()=>{   // synchronous fallback
       if(seq!==moveSeq || s.over || players[s.toMove]!=='cpu') return;
-      pacedApply(sims>0 ? Bot.mctsMove(s,sims,8,depthCap) : Bot.botMove(s,blunder), seq);
+      pacedApply(sims>0 ? Bot.mctsMove(s,sims,8,depthCap,weights) : Bot.botMove(s,blunder,weights), seq);
     }, 0);
   }
 

@@ -43,14 +43,16 @@
   .modal{position:fixed;inset:0;background:rgba(35,32,26,.55);display:none;
     align-items:center;justify-content:center;padding:18px;z-index:10}
   .modal.show{display:flex}
-  /* landing sits over a live cpu-vs-cpu game: lighten the scrim and frost the card */
-  #landing{background:rgba(35,32,26,.32)}
-  #landing .modal-card{background:rgba(244,236,216,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-  .howgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:2px 0 16px}
-  .howgrid figure{margin:0;background:rgba(255,255,255,.4);border:1px solid rgba(0,0,0,.06);
-    border-radius:8px;padding:8px 6px 7px;display:flex;flex-direction:column;align-items:center;gap:6px}
-  .howgrid figcaption{font-size:11px;line-height:1.25;color:var(--muted)}
-  .howgrid svg{display:block}
+  /* landing sits over a live cpu-vs-cpu game: keep the scrim light and the card
+     compact + semi-transparent so the game stays visible behind and around it */
+  #landing{background:rgba(35,32,26,.18)}
+  #landing .modal-card{background:rgba(244,236,216,.80);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    max-width:360px;padding:15px 18px 16px}
+  .howgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:2px 0 12px}
+  .howgrid figure{margin:0;background:rgba(255,255,255,.34);border:1px solid rgba(0,0,0,.06);
+    border-radius:7px;padding:6px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  .howgrid figcaption{font-size:10px;line-height:1.2;color:var(--muted)}
+  .howgrid svg{display:block;width:52px;height:52px}
   button.lnd-primary{width:100%;font-size:15px;font-weight:600;padding:12px;
     background:var(--ink);color:var(--paper);border-color:var(--ink)}
   .lnd-secondary{display:flex;gap:8px;margin-top:8px}
@@ -151,7 +153,7 @@
 <div id="toast"></div>
 
 <div class="modal" id="landing">
-  <div class="modal-card" style="max-width:430px;text-align:center">
+  <div class="modal-card" style="text-align:center">
     <h2 style="font-size:24px;letter-spacing:.08em;margin:2px 0 4px">HOSHI</h2>
     <p style="color:var(--muted);margin:0 0 14px;font-size:13.5px">A game of paratroopers, drones,
        and territory. <span style="color:var(--ink)">Surround to capture; outscore to win.</span></p>

@@ -608,7 +608,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(awaitingHandoff){ el.innerHTML=`Move made — send the link to your opponent to continue.`; return; }
     if(online && s.toMove!==online.seat){
       const odot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
-      el.innerHTML=`${odot}Opponent's turn — reload the page to see their move.`; return;
+      el.innerHTML=`${odot}Opponent's turn — waiting for their move…`; return;
     }
     const who=s.toMove===0?"Blue":"Red";
     const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
@@ -691,9 +691,30 @@ if(typeof module!=='undefined') module.exports=Bot;
   //     Phase 3: create/join via capability links; reload to pull the opponent's
   //     move. (Phase 4 swaps the reload for a realtime subscription.) ---
   function onlineLink(gameId,seat,token){ return location.href.split("#")[0]+"#o="+gameId+":"+seat+":"+token; }
-  function saveOnline(){ try{ localStorage.setItem("hoshi_online",JSON.stringify(online)); }catch(e){} }
+  function saveOnline(){ try{ if(!online) return; const {gameId,seat,token,invite}=online;   // not the live channel
+    localStorage.setItem("hoshi_online",JSON.stringify({gameId,seat,token,invite})); }catch(e){} }
   function loadStoredOnline(){ try{ return JSON.parse(localStorage.getItem("hoshi_online")||"null"); }catch(e){ return null; } }
-  function clearOnline(){ try{ localStorage.removeItem("hoshi_online"); }catch(e){} online=null; }
+  function clearOnline(){ unsubscribeOnline(); try{ localStorage.removeItem("hoshi_online"); }catch(e){} online=null; }
+  function unsubscribeOnline(){ if(online && online.channel){ try{ hoshiDB.removeChannel(online.channel); }catch(e){} online.channel=null; } }
+  // Phase 4 — live moves. Subscribe to this game's move inserts; when a row lands
+  // we apply just that move (or resync on a gap). Our OWN move's echo has a ply we
+  // already advanced past, so it's ignored. On (re)connect we refreshOnline() once
+  // to close any gap between the initial fetch and the subscription going live.
+  function subscribeOnline(){
+    if(!hoshiDB || !online || online.channel) return;
+    online.channel = hoshiDB.channel("game:"+online.gameId)
+      .on("postgres_changes",
+        {event:"INSERT", schema:"public", table:"moves", filter:"game_id=eq."+online.gameId},
+        (p)=>applyRemote(p.new.move, p.new.ply))
+      .subscribe((status)=>{ if(status==="SUBSCRIBED") refreshOnline(); });
+  }
+  function applyRemote(move, ply){
+    if(ply < s.ply) return;                       // already applied (our echo / duplicate)
+    if(ply > s.ply){ refreshOnline(); return; }   // missed one — full resync
+    if(!doMove(move)){ refreshOnline(); return; } // shouldn't happen; resync to be safe
+    if(s.reserve[s.toMove]<=0 && mode==='trooper') mode='drone';
+    render();
+  }
   function showInvite(link){
     document.getElementById("handoffTitle").textContent="Online game created";
     document.getElementById("handoffMsg").textContent="Send this link to invite your opponent. You're Blue — make the first move.";
@@ -702,6 +723,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   }
   async function createOnline(N,variant){
     if(!hoshiDB){ toast("Online isn't configured"); document.getElementById("mode").value="hotseat"; start(); return; }
+    unsubscribeOnline();
     const st=Hoshi.newState(N,variant);
     try{
       const {data,error}=await hoshiDB.rpc("create_game",
@@ -713,6 +735,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);  // no token in the bar
       buildBoard(); render(); showInvite(online.invite);
+      subscribeOnline();
     }catch(e){ console.error(e); toast("Couldn't create the online game"); }
   }
   async function refreshOnline(){     // pull the server's move log and replay it
@@ -725,7 +748,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       let st=stateFromObj(g.data.initial_state);
       for(const row of mv.data){ const ns=Hoshi.apply(st,row.move); if(ns) st=ns; }
       players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
-      buildBoard(); render(); return true;
+      buildBoard(); render(); subscribeOnline(); return true;
     }catch(e){ console.error(e); toast("Sync failed"); return false; }
   }
   async function submitOnlineMove(move){

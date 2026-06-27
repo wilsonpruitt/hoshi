@@ -39,6 +39,19 @@ tester feedback — revisit whether mobile should force R3 on 9×9 or expose a
 range control. See `trooper_diversity.py` (modes: pilot/full/encircle/rescue/
 mobile/step/tune) for the measurement harness behind these numbers.
 
+## Future phases (parked — not started)
+- **Terrain / landmarks (Dominic's idea).** Themed board backgrounds with FIXED
+  impassable cells you must play around — a mountain, urban-warfare rubble, water,
+  etc. Not just art: blocked interior points change group liberties, capture,
+  territory, and a trooper's deploy-range geometry, so each map plays differently.
+  Engine sketch: a per-cell `blocked` mask (illegal to place; counts as a wall for
+  liberties/territory like the board edge). Pairs with a board-background theme
+  selector. Add as a `RuleConfig`/state field + mask-aware move-gen, with tests,
+  across all three engines.
+- **Onboarding Tier 2:** interactive OGS-style coached first game (the in-app
+  walkthrough that replaces a human teacher). Tier 1 landing = ambient AI game +
+  single CTA + illustrated panels (in progress).
+
 ## The prime directive
 **Never tune rules or trust strategy claims while a test is red.** An agent
 optimizing on a broken engine produces confident garbage. Engine correctness is

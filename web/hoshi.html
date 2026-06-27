@@ -43,20 +43,30 @@
   .modal{position:fixed;inset:0;background:rgba(35,32,26,.55);display:none;
     align-items:center;justify-content:center;padding:18px;z-index:10}
   .modal.show{display:flex}
-  /* landing sits over a live cpu-vs-cpu game: keep the scrim light and the card
-     compact + semi-transparent so the game stays visible behind and around it */
-  #landing{background:rgba(35,32,26,.18)}
-  #landing .modal-card{background:rgba(244,236,216,.80);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
-    max-width:360px;padding:15px 18px 16px}
-  .howgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:2px 0 12px}
-  .howgrid figure{margin:0;background:rgba(255,255,255,.34);border:1px solid rgba(0,0,0,.06);
-    border-radius:7px;padding:6px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:3px}
-  .howgrid figcaption{font-size:10px;line-height:1.2;color:var(--muted)}
-  .howgrid svg{display:block;width:52px;height:52px}
-  button.lnd-primary{width:100%;font-size:15px;font-weight:600;padding:12px;
-    background:var(--ink);color:var(--paper);border-color:var(--ink)}
-  .lnd-secondary{display:flex;gap:8px;margin-top:8px}
-  .lnd-secondary button{flex:1}
+  /* landing = a slim bar pinned to the bottom over the live game; no scrim, so the
+     cpu-vs-cpu demo is fully visible above it */
+  #landing{background:transparent;align-items:flex-end;justify-content:center;padding:0}
+  .lnd-bar{width:100%;max-width:780px;margin:0 12px 12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:rgba(244,236,216,.94);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    border:1px solid rgba(0,0,0,.08);border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.28);padding:11px 16px}
+  .lnd-id{display:flex;flex-direction:column;line-height:1.15}
+  .lnd-title{font-size:20px;font-weight:700;letter-spacing:.12em}
+  .lnd-tag{font-size:11.5px;color:var(--muted)}
+  .lnd-actions{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
+  .lnd-actions .lnd-primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+  .lnd-link{cursor:pointer;color:var(--muted);font-size:13px;text-decoration:underline;white-space:nowrap}
+  .lnd-more{position:relative}
+  .lnd-more>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none}
+  .lnd-more>summary::-webkit-details-marker{display:none}
+  .lnd-pop{position:absolute;right:0;bottom:calc(100% + 10px);width:250px;display:flex;flex-direction:column;gap:8px;
+    background:var(--panel);border:1px solid rgba(0,0,0,.12);border-radius:10px;padding:12px;box-shadow:0 12px 34px rgba(0,0,0,.3)}
+  .lnd-open-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+  .howgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+  .howgrid figure{margin:0;background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.06);
+    border-radius:8px;padding:8px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .howgrid figcaption{font-size:10px;line-height:1.2;color:var(--muted);text-align:center}
+  .howgrid svg{display:block;width:56px;height:56px}
+  button.lnd-primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
   .modal-card{background:var(--panel);max-width:460px;width:100%;border-radius:12px;
     padding:20px 24px 26px;box-shadow:0 18px 50px rgba(0,0,0,.35);max-height:88vh;overflow:auto}
   .modal-card h2{margin:0;font-size:24px;letter-spacing:.1em}
@@ -153,27 +163,27 @@
 <div id="toast"></div>
 
 <div class="modal" id="landing">
-  <div class="modal-card" style="text-align:center">
-    <h2 style="font-size:24px;letter-spacing:.08em;margin:2px 0 4px">HOSHI</h2>
-    <p style="color:var(--muted);margin:0 0 14px;font-size:13.5px">A game of paratroopers, drones,
-       and territory. <span style="color:var(--ink)">Surround to capture; outscore to win.</span></p>
-    <div id="howGrid" class="howgrid"></div>
-    <button id="lndResume" class="lnd-primary" style="display:none;margin-bottom:8px">Resume your game</button>
-    <button id="lndVsCpu" class="lnd-primary">Play vs Computer</button>
-    <div class="lnd-secondary">
-      <button id="lndWatch">Watch AI play</button>
-      <button id="lndHotseat">2 players (same screen)</button>
+  <div class="lnd-bar">
+    <div class="lnd-id">
+      <span class="lnd-title">HOSHI</span>
+      <span class="lnd-tag">Paratroopers, drones, territory — surround to win.</span>
     </div>
-    <details id="moreWays" style="margin-top:12px;text-align:left">
-      <summary style="cursor:pointer;color:var(--muted);font-size:12.5px;letter-spacing:.04em">More ways to play (online)</summary>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-        <button id="lndOpen">Host an open game</button>
-        <button id="lndInvite">Create private game (invite link)</button>
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px">Open games</div>
-        <div id="openGamesList" style="font-size:13px;color:var(--muted)">None right now — host one above.</div>
-      </div>
-    </details>
-    <a class="small" id="lndRules" style="display:inline-block;margin-top:14px">full rules</a>
+    <div class="lnd-actions">
+      <button id="lndResume" style="display:none">Resume game</button>
+      <button id="lndVsCpu" class="lnd-primary">Play vs Computer</button>
+      <button id="lndWatch">Watch AI</button>
+      <a id="lndRules" class="lnd-link">How to play</a>
+      <details id="moreWays" class="lnd-more">
+        <summary>More</summary>
+        <div class="lnd-pop">
+          <button id="lndHotseat">2 players (same screen)</button>
+          <button id="lndOpen">Host an open game</button>
+          <button id="lndInvite">Create private game (invite link)</button>
+          <div class="lnd-open-label">Open games</div>
+          <div id="openGamesList" style="font-size:13px;color:var(--muted)">None right now — host one above.</div>
+        </div>
+      </details>
+    </div>
   </div>
 </div>
 
@@ -207,6 +217,7 @@
     <h2>HOSHI</h2>
     <p>Drop paratroopers, deploy drones, and take ground. <b>Win</b> by capturing
        <b>3</b> enemy troopers, or by holding more territory when the game ends.</p>
+    <div id="howGrid" class="howgrid"></div>
     <h3>Your turn — one action</h3>
     <ul>
       <li><b>Place a trooper</b> (the star) on any empty point — your anchor.</li>

@@ -222,6 +222,24 @@ const Bot = (function(){
   // shallow search will actually pursue and prevent captures instead of playing
   // passively. Trooper groups weigh far more: they're the decap target and the
   // engine that deploys drones.
+  // Deployable reach: how many empty points a color's READY troopers can drop a
+  // drone into (Chebyshev range = a box). Troopers spread across the board light
+  // more *unique* squares than a clustered blob, so this rewards using a trooper's
+  // deploy-anywhere-in-range potential instead of grinding one corner of territory.
+  // generation-stamped scratch so coverage() allocates nothing per call (it runs
+  // thousands of times per move inside MCTS). _lit[i]===_gen means "already counted
+  // this call". Sized for the largest board (13x13).
+  const _lit=new Int32Array(169); let _gen=0;
+  function coverage(st, color){
+    const N=st.N, R=st.R, ready=Hoshi.readyTroopers(st,color);
+    if(!ready.length) return 0;
+    const g=++_gen; let n=0;
+    for(const t of ready){ const tr=(t/N)|0, tc=t%N;
+      const r0=Math.max(0,tr-R), r1=Math.min(N-1,tr+R), c0=Math.max(0,tc-R), c1=Math.min(N-1,tc+R);
+      for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++){ const i=r*N+c;
+        if(_lit[i]!==g && st.board[i]==null){ _lit[i]=g; n++; } } }
+    return n;
+  }
   function evaluate(st, me){
     if(st.over) return st.winner===me?1e6:(st.winner===1-me?-1e6:0);
     const opp=1-me;
@@ -237,6 +255,7 @@ const Bot = (function(){
     }
     return 30*(st.lostTroopers[opp]-st.lostTroopers[me])
          + 1.5*(area[me]-area[opp])
+         + 0.4*(coverage(st,me)-coverage(st,opp))    // spread troopers for deployment reach
          + pressure;
   }
   // 1-ply greedy. `blunder` (0..1) is the chance of playing a random legal move

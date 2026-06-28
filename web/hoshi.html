@@ -232,6 +232,7 @@
   <button id="menuBtn" class="ctl-quiet" data-i18n="btn_menu" data-i18n-title="title_menu" title="Back to the main menu">Menu</button>
   <button id="share" class="ctl-quiet" data-i18n="btn_copylink" data-i18n-title="title_share" title="Copy a link to this exact position">Copy link</button>
   <button id="new" class="ctl-quiet" data-i18n="btn_new">New game</button>
+  <button id="soundToggle" class="ctl-quiet" data-i18n-title="title_sound" title="Toggle move sounds" aria-label="Toggle move sounds">&#128266;</button>
   <button id="setupToggle" class="ctl-quiet" aria-expanded="false" aria-controls="setupTray" data-i18n-title="title_setup" title="Choose who plays, board size, variant, and rule toggles">&#9881; <span data-i18n="btn_setup">Game setup</span> <span class="chev">&#9656;</span></button>
  </div>
  <div class="controls-row controls-setup" id="setupTray" hidden>
@@ -898,7 +899,36 @@ if(typeof module!=='undefined') module.exports=Bot;
     hist.push(s); gameMoves.push(move); s=ns; moveSeq++;
     if(move.type!=='pass') placeRipple(landing, mover===0?"var(--blue)":"var(--red)");
     flashCaptures(caps);
+    sfx(move.type==='pass'?'pass':caps.length?'capture':move.type==='trooper'?'place':'drone');
     return true;
+  }
+  // ── Move sounds: short synthesized blips via Web Audio (no files, no licensing).
+  //    The AudioContext resumes on the first user gesture (a click), so bot moves
+  //    after that also sound. Silent during the ambient landing demo.
+  let SOUND = (localStorage.getItem("hoshi_sound")!=="off");
+  let _actx=null;
+  function audioCtx(){
+    try{ if(!_actx) _actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ _actx=null; }
+    if(_actx && _actx.state==="suspended") _actx.resume();
+    return _actx;
+  }
+  function blip(ac, freq, dur, type, peak, slideTo){
+    const o=ac.createOscillator(), g=ac.createGain(), now=ac.currentTime;
+    o.type=type||"sine"; o.frequency.setValueAtTime(freq, now);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, now+dur);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(peak||0.16, now+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+dur);
+    o.connect(g).connect(ac.destination);
+    o.start(now); o.stop(now+dur+0.02);
+  }
+  function sfx(kind){
+    if(!SOUND || ambient) return;
+    const ac=audioCtx(); if(!ac) return;
+    if(kind==='capture'){ blip(ac, 440, 0.20, 'triangle', 0.22, 150); }  // descending — a take
+    else if(kind==='place'){ blip(ac, 200, 0.10, 'sine', 0.18); }        // low thunk — trooper
+    else if(kind==='drone'){ blip(ac, 340, 0.07, 'sine', 0.13); }        // soft blip — drone
+    else if(kind==='pass'){ blip(ac, 150, 0.06, 'sine', 0.07); }         // faint tick — pass
   }
   // expanding ring when a stone lands (motion cue)
   function placeRipple(i,color){
@@ -1378,7 +1408,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       tog_encircle:`Trooper encirclement`, tog_mobile:`Mobile drones`, vs:`vs`,
       // tooltips
       title_pass:`Pass your turn. Two passes in a row end the game and score territory.`,
-      title_menu:`Back to the main menu`, title_share:`Copy a link to this exact position`, title_setup:`Choose who plays, board size, variant, and rule toggles`,
+      title_menu:`Back to the main menu`, title_share:`Copy a link to this exact position`, title_setup:`Choose who plays, board size, variant, and rule toggles`, title_sound:`Toggle move sounds`,
       title_encircle:`Troopers are immune to ordinary capture — a deployed trooper falls only when every neighbor is an enemy stone (friendly drones shield it). Makes troopers durable anchors.`,
       title_mobile:`Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game.`,
       // modals
@@ -1442,7 +1472,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       spd_normal:`Normál`, spd_fast:`Gyors`, spd_turbo:`Turbó`,
       tog_encircle:`Ejtőernyős-bekerítés`, tog_mobile:`Mozgó drónok`, vs:`vs`,
       title_pass:`Passzold a köröd. Két passz egymás után befejezi a játékot és területet számol.`,
-      title_menu:`Vissza a főmenübe`, title_share:`Link másolása a pontos álláshoz`, title_setup:`Válaszd ki, ki játszik, a tábla méretét, a felállást és a szabályokat`,
+      title_menu:`Vissza a főmenübe`, title_share:`Link másolása a pontos álláshoz`, title_setup:`Válaszd ki, ki játszik, a tábla méretét, a felállást és a szabályokat`, title_sound:`Hangok be/ki`,
       title_encircle:`Az ejtőernyősök immunisak a hagyományos elfogásra — egy kihelyezett ejtőernyős csak akkor esik el, ha minden szomszédja ellenséges (a baráti drónok védik). Tartós horgonyokká teszi őket.`,
       title_mobile:`Mozgó drónok: egy drón egy kör alatt egy mezőt léphet egy üres pontra egy kész ejtőernyős hatótávján belül. A bábuk mozognak, nem maradnak egy helyben — dinamikusabb, kevésbé Go-szerű játék.`,
       win_new:`Új játék`, win_view:`Tábla megtekintése`,
@@ -1560,6 +1590,13 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(open) tray.removeAttribute("hidden"); else tray.setAttribute("hidden","");
     btn.setAttribute("aria-expanded", open?"true":"false");
   };
+  function syncSoundIcon(){ const b=document.getElementById("soundToggle"); if(b) b.innerHTML = SOUND?"&#128266;":"&#128263;"; }
+  document.getElementById("soundToggle").onclick=()=>{
+    SOUND=!SOUND; try{ localStorage.setItem("hoshi_sound", SOUND?"on":"off"); }catch(e){}
+    if(SOUND){ audioCtx(); sfx('drone'); }   // resume audio on this gesture + a confirmation blip
+    syncSoundIcon();
+  };
+  syncSoundIcon();
 
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ hideRules(); hideWin(); hideHandoff(); } });
 

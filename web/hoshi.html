@@ -175,139 +175,142 @@
 <body class="landing">
 <section id="hero">
   <a class="wordmark" id="heroLogo" href="#" aria-label="HOSHI — back to start">HOSHI</a>
-  <h1 class="thesis">Territory is everything.<br>So is the one holding it.</h1>
-  <p class="subline">Drop anchors, spread drones, win two ways — hold the most ground, or capture the enemy.</p>
-  <button id="ctaPlay" class="cta">&#9654; Play</button>
+  <h1 class="thesis" data-i18n="hero_thesis">Territory is everything.<br>So is the one holding it.</h1>
+  <p class="subline" data-i18n="hero_sub">Drop anchors, spread drones, win two ways — hold the most ground, or capture the enemy.</p>
+  <button id="ctaPlay" class="cta" data-i18n="cta_play">&#9654; Play</button>
   <p class="cta-secondary">
-    <button class="link" id="ctaFriend">Play a friend</button> &middot;
-    <button class="link" id="ctaWatch">Watch the AI</button>
+    <button class="link" id="ctaFriend" data-i18n="cta_friend">Play a friend</button> &middot;
+    <button class="link" id="ctaWatch" data-i18n="cta_watch">Watch the AI</button>
   </p>
+  <div class="langtoggle" role="group" aria-label="Language" style="margin-top:18px">
+    <button type="button" data-lang="en">EN</button><button type="button" data-lang="hu">🇭🇺 HU</button>
+  </div>
 </section>
 <header>
   <h1>HOSHI</h1>
-  <span class="tag">paratroopers &middot; drones &middot; territory</span>
+  <span class="tag" data-i18n="tag">paratroopers &middot; drones &middot; territory</span>
 </header>
 <div id="status"></div>
 <div id="score"></div>
 <svg id="board"></svg>
 <div class="meta">
-  <span><span class="dot" style="background:var(--blue)"></span>Blue reserve <b id="rb">5</b> &middot; lost <b id="lb">0</b></span>
-  <span><span class="dot" style="background:var(--red)"></span>Red reserve <b id="rr">5</b> &middot; lost <b id="lr">0</b></span>
+  <span><span class="dot" style="background:var(--blue)"></span><span data-i18n="reserve_blue">Blue reserve</span> <b id="rb">5</b> &middot; <span data-i18n="lost">lost</span> <b id="lb">0</b></span>
+  <span><span class="dot" style="background:var(--red)"></span><span data-i18n="reserve_red">Red reserve</span> <b id="rr">5</b> &middot; <span data-i18n="lost">lost</span> <b id="lr">0</b></span>
 </div>
 <div class="legend">
-  <span><b style="color:var(--blue);font-size:15px">&#9733;</b> trooper (anchor)</span>
-  <span><b style="color:var(--blue)">&#9679;</b> drone</span>
-  <span><b style="color:var(--blue);opacity:.5;font-size:15px">&#9733;</b> not ready yet</span>
-  <span><span class="ic" style="background:var(--blue);opacity:.22"></span> territory</span>
-  <span><b style="color:#caa24a">&#9711;</b> last move</span>
+  <span><b style="color:var(--blue);font-size:15px">&#9733;</b> <span data-i18n="leg_trooper">trooper (anchor)</span></span>
+  <span><b style="color:var(--blue)">&#9679;</b> <span data-i18n="leg_drone">drone</span></span>
+  <span><b style="color:var(--blue);opacity:.5;font-size:15px">&#9733;</b> <span data-i18n="leg_notready">not ready yet</span></span>
+  <span><span class="ic" style="background:var(--blue);opacity:.22"></span> <span data-i18n="leg_territory">territory</span></span>
+  <span><b style="color:#caa24a">&#9711;</b> <span data-i18n="leg_last">last move</span></span>
 </div>
 <section id="beats">
   <ol>
-    <li><figure id="beat1"></figure><h3>Drop a trooper</h3>
-        <p>Your anchor. Place it anywhere — bold and deep, or safe at home.</p></li>
-    <li><figure id="beat2"></figure><h3>Deploy in range</h3>
-        <p>Drones spread only from a ready trooper, filling the zone around it.</p></li>
-    <li><figure id="beat3"></figure><h3>Surround to win</h3>
-        <p>Capture by surrounding — or hold the most ground when the game ends.</p></li>
+    <li><figure id="beat1"></figure><h3 data-i18n="beat1_h">Drop a trooper</h3>
+        <p data-i18n="beat1_p">Your anchor. Place it anywhere — bold and deep, or safe at home.</p></li>
+    <li><figure id="beat2"></figure><h3 data-i18n="beat2_h">Deploy in range</h3>
+        <p data-i18n="beat2_p">Drones spread only from a ready trooper, filling the zone around it.</p></li>
+    <li><figure id="beat3"></figure><h3 data-i18n="beat3_h">Surround to win</h3>
+        <p data-i18n="beat3_p">Capture by surrounding — or hold the most ground when the game ends.</p></li>
   </ol>
   <p class="cta-secondary" style="margin-top:18px;display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap">
-    <button class="link" id="lndResume" style="display:none">Resume your game</button>
-    <button class="link" id="lndOpen">Host an online game</button>
-    <button class="link" id="lndInvite">Private invite</button>
-    <button class="link" id="lndRules">How to play</button>
+    <button class="link" id="lndResume" style="display:none" data-i18n="lnd_resume">Resume your game</button>
+    <button class="link" id="lndOpen" data-i18n="lnd_open">Host an online game</button>
+    <button class="link" id="lndInvite" data-i18n="lnd_invite">Private invite</button>
+    <button class="link" id="lndRules" data-i18n="lnd_rules">How to play</button>
   </p>
   <div id="openGamesList" style="display:none"></div>
 </section>
 <div class="controls">
  <div class="controls-row controls-moves">
-  <button id="mTrooper">Place trooper</button>
-  <button id="mDrone">Deploy drone</button>
-  <button id="pass" title="Pass your turn. Two passes in a row end the game and score territory.">Pass</button>
-  <button id="undo">Undo</button>
+  <button id="mTrooper" data-i18n="btn_trooper">Place trooper</button>
+  <button id="mDrone" data-i18n="btn_drone">Deploy drone</button>
+  <button id="pass" data-i18n="btn_pass" data-i18n-title="title_pass" title="Pass your turn. Two passes in a row end the game and score territory.">Pass</button>
+  <button id="undo" data-i18n="btn_undo">Undo</button>
  </div>
  <div class="controls-row controls-session">
-  <button id="menuBtn" class="ctl-quiet" title="Back to the main menu">Menu</button>
-  <button id="share" class="ctl-quiet" title="Copy a link to this exact position">Copy link</button>
-  <button id="new" class="ctl-quiet">New game</button>
-  <button id="setupToggle" class="ctl-quiet" aria-expanded="false" aria-controls="setupTray" title="Choose who plays, board size, variant, and rule toggles">&#9881; Game setup <span class="chev">&#9656;</span></button>
+  <button id="menuBtn" class="ctl-quiet" data-i18n="btn_menu" data-i18n-title="title_menu" title="Back to the main menu">Menu</button>
+  <button id="share" class="ctl-quiet" data-i18n="btn_copylink" data-i18n-title="title_share" title="Copy a link to this exact position">Copy link</button>
+  <button id="new" class="ctl-quiet" data-i18n="btn_new">New game</button>
+  <button id="setupToggle" class="ctl-quiet" aria-expanded="false" aria-controls="setupTray" data-i18n-title="title_setup" title="Choose who plays, board size, variant, and rule toggles">&#9881; <span data-i18n="btn_setup">Game setup</span> <span class="chev">&#9656;</span></button>
  </div>
  <div class="controls-row controls-setup" id="setupTray" hidden>
-  <select id="mode" title="Who controls each side">
-    <option value="hotseat">2 players (hot-seat)</option>
-    <option value="vscpu">vs Computer (you are Blue)</option>
-    <option value="cpucpu">Watch: Computer vs Computer</option>
-    <option value="bylink">Play by link (paste)</option>
-    <option value="online">Play online (live)</option>
+  <select id="mode">
+    <option value="hotseat" data-i18n="mode_hotseat">2 players (hot-seat)</option>
+    <option value="vscpu" data-i18n="mode_vscpu">vs Computer (you are Blue)</option>
+    <option value="cpucpu" data-i18n="mode_cpucpu">Watch: Computer vs Computer</option>
+    <option value="bylink" data-i18n="mode_bylink">Play by link (paste)</option>
+    <option value="online" data-i18n="mode_online">Play online (live)</option>
   </select>
   <span class="diffgroup" style="display:inline-flex;align-items:center;gap:6px">
     <span class="dot" id="diffDotBlue" style="background:var(--blue);margin:0;display:none" title="Blue computer"></span>
-    <select id="diff" title="Computer strength — in Watch mode this is Blue's strength">
-      <optgroup label="Strength">
-        <option value="easy">Easy</option>
-        <option value="medium" selected>Medium</option>
-        <option value="hard">Hard</option>
-        <option value="expert">Expert</option>
+    <select id="diff">
+      <optgroup label="Strength" data-i18n-label="og_strength">
+        <option value="easy" data-i18n="d_easy">Easy</option>
+        <option value="medium" selected data-i18n="d_medium">Medium</option>
+        <option value="hard" data-i18n="d_hard">Hard</option>
+        <option value="expert" data-i18n="d_expert">Expert</option>
       </optgroup>
-      <optgroup label="Style (balanced, for watching)">
-        <option value="style_territorial">Territorial</option>
-        <option value="style_expansionist">Expansionist</option>
-        <option value="style_hunter">Hunter</option>
+      <optgroup label="Style (balanced, for watching)" data-i18n-label="og_style">
+        <option value="style_territorial" data-i18n="d_territorial">Territorial</option>
+        <option value="style_expansionist" data-i18n="d_expansionist">Expansionist</option>
+        <option value="style_hunter" data-i18n="d_hunter">Hunter</option>
       </optgroup>
     </select>
-    <span id="diffVs" style="display:none;color:var(--muted);font-size:12px">vs</span>
+    <span id="diffVs" style="display:none;color:var(--muted);font-size:12px" data-i18n="vs">vs</span>
     <span class="dot" id="diffDotRed" style="background:var(--red);margin:0;display:none" title="Red computer"></span>
-    <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
-      <optgroup label="Strength">
-        <option value="easy">Easy</option>
-        <option value="medium">Medium</option>
-        <option value="hard" selected>Hard</option>
-        <option value="expert">Expert</option>
+    <select id="diff2" style="display:none">
+      <optgroup label="Strength" data-i18n-label="og_strength">
+        <option value="easy" data-i18n="d_easy">Easy</option>
+        <option value="medium" data-i18n="d_medium">Medium</option>
+        <option value="hard" selected data-i18n="d_hard">Hard</option>
+        <option value="expert" data-i18n="d_expert">Expert</option>
       </optgroup>
-      <optgroup label="Style (balanced, for watching)">
-        <option value="style_territorial">Territorial</option>
-        <option value="style_expansionist">Expansionist</option>
-        <option value="style_hunter">Hunter</option>
+      <optgroup label="Style (balanced, for watching)" data-i18n-label="og_style">
+        <option value="style_territorial" data-i18n="d_territorial">Territorial</option>
+        <option value="style_expansionist" data-i18n="d_expansionist">Expansionist</option>
+        <option value="style_hunter" data-i18n="d_hunter">Hunter</option>
       </optgroup>
     </select>
-    <select id="watchSpeed" title="Playback speed (Watch mode)" style="display:none">
-      <option value="normal">Normal</option>
-      <option value="fast">Fast</option>
-      <option value="turbo">Turbo</option>
+    <select id="watchSpeed" style="display:none">
+      <option value="normal" data-i18n="spd_normal">Normal</option>
+      <option value="fast" data-i18n="spd_fast">Fast</option>
+      <option value="turbo" data-i18n="spd_turbo">Turbo</option>
     </select>
   </span>
   <select id="size">
-    <option value="9">9 &times; 9 (faster)</option>
-    <option value="13">13 &times; 13</option>
+    <option value="9" data-i18n="size9">9 &times; 9 (faster)</option>
+    <option value="13" data-i18n="size13">13 &times; 13</option>
   </select>
-  <select id="variant" title="Where your troopers start — same rules, different game">
-    <option value="beachhead" selected>Beachhead — all in reserve</option>
-    <option value="vanguard">Vanguard — 1 deployed</option>
-    <option value="garrison">Garrison — 2 deployed</option>
-    <option value="bastion">Bastion — 3 deployed</option>
-    <option value="fog">Fog — 5 scattered</option>
+  <select id="variant">
+    <option value="beachhead" selected data-i18n="var_beachhead">Beachhead — all in reserve</option>
+    <option value="vanguard" data-i18n="var_vanguard">Vanguard — 1 deployed</option>
+    <option value="garrison" data-i18n="var_garrison">Garrison — 2 deployed</option>
+    <option value="bastion" data-i18n="var_bastion">Bastion — 3 deployed</option>
+    <option value="fog" data-i18n="var_fog">Fog — 5 scattered</option>
   </select>
-  <label id="encircleLbl" title="Troopers are immune to ordinary capture — a deployed trooper falls only when every neighbor is an enemy stone (friendly drones shield it). Makes troopers durable anchors." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
-    <input type="checkbox" id="encircle"> Trooper encirclement
+  <label id="encircleLbl" data-i18n-title="title_encircle" title="Troopers are immune to ordinary capture — a deployed trooper falls only when every neighbor is an enemy stone (friendly drones shield it). Makes troopers durable anchors." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="encircle"> <span data-i18n="tog_encircle">Trooper encirclement</span>
   </label>
-  <label id="mobileLbl" title="Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
-    <input type="checkbox" id="mobile"> Mobile drones
+  <label id="mobileLbl" data-i18n-title="title_mobile" title="Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="mobile"> <span data-i18n="tog_mobile">Mobile drones</span>
   </label>
  </div>
 </div>
-<a class="small" id="rulesLink">how to play</a>
+<a class="small" id="rulesLink" data-i18n="rulesLink">how to play</a>
 
 <div id="toast"></div>
 
 
 <div class="modal" id="handoffModal">
   <div class="modal-card" style="text-align:center;max-width:420px">
-    <h2 id="handoffTitle" style="font-size:20px;letter-spacing:.04em;margin:2px 0 6px">Your move is in</h2>
-    <p id="handoffMsg" style="color:var(--muted);margin:0 0 4px">Send this link to your opponent — they open
+    <h2 id="handoffTitle" data-i18n="handoff_title" style="font-size:20px;letter-spacing:.04em;margin:2px 0 6px">Your move is in</h2>
+    <p id="handoffMsg" data-i18n="handoff_msg" style="color:var(--muted);margin:0 0 4px">Send this link to your opponent — they open
        it to take their turn, then send one back.</p>
     <input id="handoffLink" readonly onclick="this.select()">
     <div style="display:flex;gap:10px;justify-content:center">
-      <button id="handoffCopy">Copy link</button>
-      <button id="handoffClose">View board</button>
+      <button id="handoffCopy" data-i18n="handoff_copy">Copy link</button>
+      <button id="handoffClose" data-i18n="handoff_view">View board</button>
     </div>
   </div>
 </div>
@@ -317,8 +320,8 @@
     <div id="winTitle" style="font-size:26px;font-weight:700;letter-spacing:.04em;margin:4px 0 6px"></div>
     <div id="winDetail" style="color:var(--muted);font-size:15px;margin-bottom:20px"></div>
     <div style="display:flex;gap:10px;justify-content:center">
-      <button id="winNew">New game</button>
-      <button id="winClose">View board</button>
+      <button id="winNew" data-i18n="win_new">New game</button>
+      <button id="winClose" data-i18n="win_view">View board</button>
     </div>
   </div>
 </div>
@@ -852,7 +855,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     // live area score (stones + enclosed territory)
     const sc=Hoshi.areaScore(s);
     document.getElementById("score").innerHTML =
-      `area &nbsp;<span class="dot" style="background:var(--blue)"></span><b>${sc[0]}</b>`+
+      `${t("score_area")} &nbsp;<span class="dot" style="background:var(--blue)"></span><b>${sc[0]}</b>`+
       ` &nbsp;&ndash;&nbsp; <span class="dot" style="background:var(--red)"></span><b>${sc[1]}</b>`;
     status();
     syncShareUI();                                             // Copy link only shows for a live correspondence game
@@ -983,39 +986,29 @@ if(typeof module!=='undefined') module.exports=Bot;
   function status(){
     const el=document.getElementById("status");
     const sc=Hoshi.areaScore(s);
+    const dotFor=c=>`<span class="dot" style="background:${c?'var(--red)':'var(--blue)'}"></span>`;
     if(s.over){
-      if(s.winner===-1){el.innerHTML=`<b>Draw</b> — territory tied ${sc[0]}–${sc[1]}.`;return;}
-      const who=s.winner===0?"Blue":"Red";
+      if(s.winner===-1){el.innerHTML=t("st_draw",{a:sc[0],b:sc[1]});return;}
       const byCap=s.lostTroopers[1-s.winner]>=s.captureToWin;
-      const dot=`<span class="dot" style="background:${s.winner?'var(--red)':'var(--blue)'}"></span>`;
       el.innerHTML = byCap
-        ? `${dot}<b>${who} wins</b> by decapitation — captured ${s.captureToWin} troopers.`
-        : `${dot}<b>${who} wins</b> by territory — ${sc[0]}–${sc[1]} (+${Math.abs(sc[0]-sc[1])}).`;
+        ? t("st_win_cap",{dot:dotFor(s.winner),who:colorName(s.winner),n:s.captureToWin})
+        : t("st_win_terr",{dot:dotFor(s.winner),who:colorName(s.winner),a:sc[0],b:sc[1],lead:Math.abs(sc[0]-sc[1])});
       return;
     }
-    if(awaitingHandoff){ el.innerHTML=`Move made — send the link to your opponent to continue.`; return; }
-    if(online && online.waiting){ el.innerHTML=`Waiting for an opponent to join… (your game is listed in the lobby)`; return; }
-    if(online && s.toMove!==online.seat){
-      const odot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
-      el.innerHTML=`${odot}Opponent's turn — waiting for their move…`; return;
-    }
-    const who=s.toMove===0?"Blue":"Red";
-    const dot=`<span class="dot" style="background:${s.toMove?'var(--red)':'var(--blue)'}"></span>`;
-    if(players[s.toMove]==='cpu'){ el.innerHTML=`${dot}${who} (computer) is thinking…`; return; }
-    if(s.passes===1){   // opponent just passed — one more pass ends the game
-      el.innerHTML=`${dot}${who} to move — opponent <b>passed</b>. <b>Pass</b> too to end &amp; score, or play on.`;
-      return;
-    }
-    if(Hoshi.legalMoves(s).length===1){   // only passing remains
-      el.innerHTML=`${dot}${who} has no moves left — press <b>Pass</b> (two passes end &amp; score).`;
-      return;
-    }
-    if(moveSrc!==null){ el.innerHTML=`${dot}${who} — click a lit point to move the drone there, or click it again to cancel.`; return; }
-    const act = mode==='trooper' ? "place a trooper anywhere" : "deploy a drone in a lit point";
-    let line=`${dot}${who} to move — ${act}.`;
-    if(s.mobileDrones) line += ` <span style="color:var(--muted)">· or click one of your drones to relocate it.</span>`;
+    if(awaitingHandoff){ el.innerHTML=t("st_handoff"); return; }
+    if(online && online.waiting){ el.innerHTML=t("st_waiting"); return; }
+    if(online && s.toMove!==online.seat){ el.innerHTML=t("st_oppturn",{dot:dotFor(s.toMove)}); return; }
+    const who=colorName(s.toMove), dot=dotFor(s.toMove);
+    if(players[s.toMove]==='cpu'){ el.innerHTML=t("st_thinking",{dot,who}); return; }
+    if(s.passes===1){ el.innerHTML=t("st_passed",{dot,who}); return; }
+    if(Hoshi.legalMoves(s).length===1){ el.innerHTML=t("st_nomoves",{dot,who}); return; }
+    if(moveSrc!==null){ el.innerHTML=t("st_movedrone",{dot,who}); return; }
+    const act = mode==='trooper' ? t("st_act_trooper") : t("st_act_drone");
+    let line=t("st_tomove",{dot,who,act});
+    if(s.mobileDrones) line += t("st_mobile_hint");
     const filled = s.board.filter(Boolean).length/(s.N*s.N);
-    if(filled>0.6) line += ` <span style="color:var(--muted)">· or <b>Pass</b> if you're done — two passes end it (${sc[0]>sc[1]?"Blue ahead":sc[1]>sc[0]?"Red ahead":"tied"} ${sc[0]}–${sc[1]}).</span>`;
+    if(filled>0.6){ const lead = sc[0]>sc[1]?t("lead_blue"):sc[1]>sc[0]?t("lead_red"):t("lead_tied");
+      line += t("st_pass_hint",{lead,a:sc[0],b:sc[1]}); }
     el.innerHTML=line;
   }
 
@@ -1125,12 +1118,12 @@ if(typeof module!=='undefined') module.exports=Bot;
   }
   function copyToClipboard(text){
     if(navigator.clipboard&&navigator.clipboard.writeText)
-      navigator.clipboard.writeText(text).then(()=>toast("Link copied"),()=>prompt("Copy this link:",text));
-    else prompt("Copy this link:",text);
+      navigator.clipboard.writeText(text).then(()=>toast(t("tst_link_copied")),()=>prompt(t("prompt_copy"),text));
+    else prompt(t("prompt_copy"),text);
   }
   function shareLink(){
     if(online){ if(online.invite) copyToClipboard(online.invite);
-                else toast("Only the game's creator has an invite link"); return; }
+                else toast(t("tst_no_invite")); return; }
     copyToClipboard(linkFor(document.getElementById("mode").value==="bylink"));
   }
   // play-by-link: after your move, lock the board and surface a link to send
@@ -1166,7 +1159,7 @@ if(typeof module!=='undefined') module.exports=Bot;
         (p)=>applyRemote(p.new.move, p.new.ply))
       .on("postgres_changes",                      // host's open game gets claimed -> unlock
         {event:"UPDATE", schema:"public", table:"games", filter:"id=eq."+online.gameId},
-        (p)=>{ if(online && online.waiting && p.new.status==="active"){ online.waiting=false; render(); toast("Opponent joined — your move."); } })
+        (p)=>{ if(online && online.waiting && p.new.status==="active"){ online.waiting=false; render(); toast(t("tst_opp_joined")); } })
       .subscribe((status)=>{ if(status==="SUBSCRIBED") refreshOnline(); });
   }
   function applyRemote(move, ply){
@@ -1183,7 +1176,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     document.getElementById("handoffModal").classList.add("show");
   }
   async function createOnline(N,variant){
-    if(!hoshiDB){ toast("Online isn't configured"); document.getElementById("mode").value="hotseat"; start(); return; }
+    if(!hoshiDB){ toast(t("tst_online_off")); document.getElementById("mode").value="hotseat"; start(); return; }
     unsubscribeOnline();
     const st=Hoshi.newState(N,variant);
     try{
@@ -1197,7 +1190,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);  // no token in the bar
       buildBoard(); render(); showInvite(online.invite);
       subscribeOnline();
-    }catch(e){ console.error(e); toast("Couldn't create the online game"); }
+    }catch(e){ console.error(e); toast(t("tst_create_fail")); }
   }
   async function refreshOnline(){     // pull the server's move log and replay it
     if(!hoshiDB || !online) return false;
@@ -1206,7 +1199,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       if(g.error) throw g.error;
       const init=g.data.initial_state;
       if(!init || !init.N || !Array.isArray(init.board)){       // malformed / not a real game
-        toast("That game can't be loaded — back to the menu."); clearOnline(); showLanding(); return false;
+        toast(t("tst_load_fail")); clearOnline(); showLanding(); return false;
       }
       if(online) online.waiting = (g.data.status==="open");   // host still awaiting an opponent
       const mv=await hoshiDB.from("moves").select("ply,move").eq("game_id",online.gameId).order("ply");
@@ -1215,7 +1208,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       for(const row of mv.data){ const ns=Hoshi.apply(st,row.move); if(ns) st=ns; }
       players=["human","human"]; s=st; hist=[]; gameMoves=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       buildBoard(); render(); subscribeOnline(); return true;
-    }catch(e){ console.error(e); toast("Sync failed"); return false; }
+    }catch(e){ console.error(e); toast(t("tst_sync_fail")); return false; }
   }
   // --- Tier 2 lobby: host an open game / browse + join open games ---
   function cancelOpenIfWaiting(){
@@ -1223,7 +1216,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       hoshiDB.rpc("cancel_open_game",{p_game_id:online.gameId,p_blue_token:online.token}).catch(()=>{});
   }
   async function createOpenGame(N,variant){
-    if(!hoshiDB){ toast("Online play isn't configured"); return; }
+    if(!hoshiDB){ toast(t("tst_online_off2")); return; }
     unsubscribeOnline();
     const st=Hoshi.newState(N,variant);
     try{
@@ -1237,8 +1230,8 @@ if(typeof module!=='undefined') module.exports=Bot;
       players=["human","human"]; s=st; hist=[]; gameMoves=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);
       buildBoard(); render(); subscribeOnline();
-      toast("Listed in the lobby — waiting for an opponent.");
-    }catch(e){ console.error(e); toast("Couldn't create the open game"); }
+      toast(t("tst_listed"));
+    }catch(e){ console.error(e); toast(t("tst_open_fail")); }
   }
   async function joinOpenGame(gameId){
     if(!hoshiDB) return;
@@ -1251,7 +1244,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       hideLanding(); document.getElementById("mode").value="online";
       history.replaceState(null,"",location.pathname+location.search+"#o="+gameId);
       await refreshOnline();
-    }catch(e){ console.error(e); toast(e.message||"Couldn't join — game may be taken"); loadOpenGames(); }
+    }catch(e){ console.error(e); toast(e.message||t("tst_join_fail")); loadOpenGames(); }
   }
   async function loadOpenGames(){
     const el=document.getElementById("openGamesList");
@@ -1288,7 +1281,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     const {data,error}=await hoshiDB.functions.invoke("submit-move",
       {body:{game_id:online.gameId, seat_token:online.token, move}});
     if(error || !data || !data.ok){    // rejected (not your turn / illegal / over) → roll back
-      toast((data&&data.error) || (error&&error.message) || "Move rejected");
+      toast((data&&data.error) || (error&&error.message) || t("tst_move_rejected"));
       if(hist.length){ s=hist.pop(); gameMoves.pop(); moveSeq++; lastMove=null; render(); }
     }
   }
@@ -1311,7 +1304,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       const st=loadStoredOnline();                 // bare #o=gameId — resume this browser's seat
       if(st && st.gameId===parts[0]){ online=st; document.getElementById("mode").value="online"; refreshOnline(); return; }
     }
-    if(h.startsWith("#g=")){ try{ document.body.classList.remove("landing"); loadPayload(decodeShare(h.slice(3))); toast("Loaded shared game"); return; }catch(e){} }
+    if(h.startsWith("#g=")){ try{ document.body.classList.remove("landing"); loadPayload(decodeShare(h.slice(3))); toast(t("tst_loaded_shared")); return; }catch(e){} }
     // mid-game in progress → straight to the board with it (not the hero)
     try{ const o=JSON.parse(localStorage.getItem("hoshi_save")||"null");
       if(o&&o.st&&!o.st.over){ document.body.classList.remove("landing"); loadPayload(o); return; } }catch(e){}
@@ -1327,7 +1320,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     doMove({type:'pass'}); render();
     if(online){ submitOnlineMove({type:'pass'}); return; }
     if(document.getElementById("mode").value!=="bylink") scheduleBot(); };  // ending shows the win popup
-  document.getElementById("undo").onclick=()=>{ if(online){ toast("Undo isn't available online"); return; }
+  document.getElementById("undo").onclick=()=>{ if(online){ toast(t("tst_undo_online")); return; }
     if(!hist.length)return;
     s=hist.pop(); gameMoves.pop();
     while(hist.length && players[s.toMove]==='cpu'){ s=hist.pop(); gameMoves.pop(); }  // back to your own turn
@@ -1344,9 +1337,9 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("diff").onchange=()=>{ persistSettings(); syncDiffUI(); };
   document.getElementById("diff2").onchange=()=>{ persistSettings(); syncDiffUI(); };
   document.getElementById("watchSpeed").onchange=persistSettings;
-  // ── i18n: instruction strings (EN/HU). Toggle lives in the rules modal; the
-  //    choice persists. Extend by adding keys here + data-i18n on more elements.
-  //    HU is a careful first pass — worth a native-speaker proofread.
+  // ── i18n (EN/HU). Full UI. data-i18n→innerHTML, data-i18n-title→title attr,
+  //    data-i18n-label→optgroup label. Dynamic strings go through t(key,params).
+  //    HU is a careful pass for an 11-yo player — worth a native-speaker proofread.
   const I18N={
     en:{
       intro:`Drop paratroopers, deploy drones, and take ground. <b>Win</b> by capturing <b>3</b> enemy troopers, or by holding more territory when the game ends.`,
@@ -1360,7 +1353,61 @@ if(typeof module!=='undefined') module.exports=Bot;
       rule3:`Drones only come from a living, ready trooper — protect your anchors.`,
       setup_h:`Setups`,
       setup_p:`The setup dropdown only changes <i>where your troopers start</i> — the rules never change. More committed forward = more early pressure, less flexibility.`,
-      how0:`Drop a trooper — your anchor`, how1:`Deploy drones in its range`, how2:`Surround to capture`, how3:`…or wall off territory`
+      how0:`Drop a trooper — your anchor`, how1:`Deploy drones in its range`, how2:`Surround to capture`, how3:`…or wall off territory`,
+      // landing
+      hero_thesis:`Territory is everything.<br>So is the one holding it.`,
+      hero_sub:`Drop anchors, spread drones, win two ways — hold the most ground, or capture the enemy.`,
+      cta_play:`▶ Play`, cta_friend:`Play a friend`, cta_watch:`Watch the AI`,
+      beat1_h:`Drop a trooper`, beat1_p:`Your anchor. Place it anywhere — bold and deep, or safe at home.`,
+      beat2_h:`Deploy in range`, beat2_p:`Drones spread only from a ready trooper, filling the zone around it.`,
+      beat3_h:`Surround to win`, beat3_p:`Capture by surrounding — or hold the most ground when the game ends.`,
+      lnd_resume:`Resume your game`, lnd_open:`Host an online game`, lnd_invite:`Private invite`, lnd_rules:`How to play`,
+      tag:`paratroopers · drones · territory`,
+      reserve_blue:`Blue reserve`, reserve_red:`Red reserve`, lost:`lost`,
+      leg_trooper:`trooper (anchor)`, leg_drone:`drone`, leg_notready:`not ready yet`, leg_territory:`territory`, leg_last:`last move`,
+      // buttons
+      btn_trooper:`Place trooper`, btn_drone:`Deploy drone`, btn_pass:`Pass`, btn_undo:`Undo`,
+      btn_menu:`Menu`, btn_copylink:`Copy link`, btn_new:`New game`, btn_setup:`Game setup`, rulesLink:`how to play`,
+      // selects
+      mode_hotseat:`2 players (hot-seat)`, mode_vscpu:`vs Computer (you are Blue)`, mode_cpucpu:`Watch: Computer vs Computer`, mode_bylink:`Play by link (paste)`, mode_online:`Play online (live)`,
+      og_strength:`Strength`, og_style:`Style (balanced, for watching)`,
+      d_easy:`Easy`, d_medium:`Medium`, d_hard:`Hard`, d_expert:`Expert`, d_territorial:`Territorial`, d_expansionist:`Expansionist`, d_hunter:`Hunter`,
+      size9:`9 × 9 (faster)`, size13:`13 × 13`,
+      var_beachhead:`Beachhead — all in reserve`, var_vanguard:`Vanguard — 1 deployed`, var_garrison:`Garrison — 2 deployed`, var_bastion:`Bastion — 3 deployed`, var_fog:`Fog — 5 scattered`,
+      spd_normal:`Normal`, spd_fast:`Fast`, spd_turbo:`Turbo`,
+      tog_encircle:`Trooper encirclement`, tog_mobile:`Mobile drones`, vs:`vs`,
+      // tooltips
+      title_pass:`Pass your turn. Two passes in a row end the game and score territory.`,
+      title_menu:`Back to the main menu`, title_share:`Copy a link to this exact position`, title_setup:`Choose who plays, board size, variant, and rule toggles`,
+      title_encircle:`Troopers are immune to ordinary capture — a deployed trooper falls only when every neighbor is an enemy stone (friendly drones shield it). Makes troopers durable anchors.`,
+      title_mobile:`Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game.`,
+      // modals
+      win_new:`New game`, win_view:`View board`,
+      handoff_title:`Your move is in`, handoff_msg:`Send this link to your opponent — they open it to take their turn, then send one back.`, handoff_copy:`Copy link`, handoff_view:`View board`,
+      // dynamic
+      c_blue:`Blue`, c_red:`Red`, score_area:`area`,
+      lead_blue:`Blue ahead`, lead_red:`Red ahead`, lead_tied:`tied`,
+      st_draw:`<b>Draw</b> — territory tied {a}–{b}.`,
+      st_win_cap:`{dot}<b>{who} wins</b> by decapitation — captured {n} troopers.`,
+      st_win_terr:`{dot}<b>{who} wins</b> by territory — {a}–{b} (+{lead}).`,
+      st_handoff:`Move made — send the link to your opponent to continue.`,
+      st_waiting:`Waiting for an opponent to join… (your game is listed in the lobby)`,
+      st_oppturn:`{dot}Opponent's turn — waiting for their move…`,
+      st_thinking:`{dot}{who} (computer) is thinking…`,
+      st_passed:`{dot}{who} to move — opponent <b>passed</b>. <b>Pass</b> too to end &amp; score, or play on.`,
+      st_nomoves:`{dot}{who} has no moves left — press <b>Pass</b> (two passes end &amp; score).`,
+      st_movedrone:`{dot}{who} — click a lit point to move the drone there, or click it again to cancel.`,
+      st_act_trooper:`place a trooper anywhere`, st_act_drone:`deploy a drone in a lit point`,
+      st_tomove:`{dot}{who} to move — {act}.`,
+      st_mobile_hint:` <span style="color:var(--muted)">· or click one of your drones to relocate it.</span>`,
+      st_pass_hint:` <span style="color:var(--muted)">· or <b>Pass</b> if you're done — two passes end it ({lead} {a}–{b}).</span>`,
+      win_draw_title:`Draw`, win_draw_detail:`Territory tied {a}–{b}.`, win_title:`{who} wins`,
+      win_cap_detail:`by decapitation — captured {n} troopers.`, win_terr_detail:`by territory — {a}–{b} (+{lead}).`,
+      tst_link_copied:`Link copied`, tst_no_invite:`Only the game's creator has an invite link`, tst_opp_joined:`Opponent joined — your move.`,
+      tst_online_off:`Online isn't configured`, tst_create_fail:`Couldn't create the online game`, tst_load_fail:`That game can't be loaded — back to the menu.`,
+      tst_sync_fail:`Sync failed`, tst_online_off2:`Online play isn't configured`, tst_listed:`Listed in the lobby — waiting for an opponent.`,
+      tst_open_fail:`Couldn't create the open game`, tst_join_fail:`Couldn't join — game may be taken`, tst_move_rejected:`Move rejected`,
+      tst_loaded_shared:`Loaded shared game`, tst_undo_online:`Undo isn't available online`, tst_resumed:`Resumed your game`, prompt_copy:`Copy this link:`
     },
     hu:{
       intro:`Dobj le ejtőernyősöket, telepíts drónokat, és foglalj területet. <b>Győzelem</b>: ejts el <b>3</b> ellenséges ejtőernyőst, vagy uralj több területet a játék végén.`,
@@ -1374,16 +1421,73 @@ if(typeof module!=='undefined') module.exports=Bot;
       rule3:`Drónok csak élő, kész ejtőernyőstől származnak — védd a horgonyaidat.`,
       setup_h:`Felállások`,
       setup_p:`A felállás legördülő csak azt változtatja, <i>hol kezdenek az ejtőernyőseid</i> — a szabályok sosem változnak. Több előretolt erő = nagyobb korai nyomás, kevesebb rugalmasság.`,
-      how0:`Dobj le egy ejtőernyőst — a horgonyod`, how1:`Telepíts drónokat a hatótávján belül`, how2:`Vedd körül az elfogáshoz`, how3:`…vagy keríts el területet`
+      how0:`Dobj le egy ejtőernyőst — a horgonyod`, how1:`Telepíts drónokat a hatótávján belül`, how2:`Vedd körül az elfogáshoz`, how3:`…vagy keríts el területet`,
+      hero_thesis:`A terület minden.<br>És az is, aki tartja.`,
+      hero_sub:`Dobj le horgonyokat, terjeszd a drónokat, és nyerj kétféleképpen — urald a legtöbb területet, vagy ejtsd el az ellenséget.`,
+      cta_play:`▶ Játék`, cta_friend:`Játssz egy baráttal`, cta_watch:`Nézd a gépet`,
+      beat1_h:`Dobj le egy ejtőernyőst`, beat1_p:`A horgonyod. Tedd bárhová — bátran, mélyre, vagy biztonságban otthon.`,
+      beat2_h:`Telepíts a közelben`, beat2_p:`A drónok csak kész ejtőernyőstől terjednek, kitöltve a körülötte lévő mezőt.`,
+      beat3_h:`Keríts be a győzelemhez`, beat3_p:`Foglyul ejtesz bekerítéssel — vagy a legtöbb területet tartod a játék végén.`,
+      lnd_resume:`Folytasd a játékot`, lnd_open:`Online játék indítása`, lnd_invite:`Privát meghívó`, lnd_rules:`Hogyan játssz`,
+      tag:`ejtőernyősök · drónok · terület`,
+      reserve_blue:`Kék tartalék`, reserve_red:`Piros tartalék`, lost:`elveszett`,
+      leg_trooper:`ejtőernyős (horgony)`, leg_drone:`drón`, leg_notready:`még nem kész`, leg_territory:`terület`, leg_last:`utolsó lépés`,
+      btn_trooper:`Ejtőernyős`, btn_drone:`Drón`, btn_pass:`Passz`, btn_undo:`Vissza`,
+      btn_menu:`Menü`, btn_copylink:`Link másolása`, btn_new:`Új játék`, btn_setup:`Beállítások`, rulesLink:`hogyan játssz`,
+      mode_hotseat:`2 játékos (egy gépen)`, mode_vscpu:`Gép ellen (te vagy a Kék)`, mode_cpucpu:`Nézd: Gép a Gép ellen`, mode_bylink:`Játék linkkel (beillesztés)`, mode_online:`Online játék (élő)`,
+      og_strength:`Erősség`, og_style:`Stílus (kiegyensúlyozott, nézéshez)`,
+      d_easy:`Könnyű`, d_medium:`Közepes`, d_hard:`Nehéz`, d_expert:`Profi`, d_territorial:`Területi`, d_expansionist:`Terjeszkedő`, d_hunter:`Vadász`,
+      size9:`9 × 9 (gyorsabb)`, size13:`13 × 13`,
+      var_beachhead:`Hídfő — mind tartalékban`, var_vanguard:`Előőrs — 1 kihelyezve`, var_garrison:`Helyőrség — 2 kihelyezve`, var_bastion:`Bástya — 3 kihelyezve`, var_fog:`Köd — 5 szétszórva`,
+      spd_normal:`Normál`, spd_fast:`Gyors`, spd_turbo:`Turbó`,
+      tog_encircle:`Ejtőernyős-bekerítés`, tog_mobile:`Mozgó drónok`, vs:`vs`,
+      title_pass:`Passzold a köröd. Két passz egymás után befejezi a játékot és területet számol.`,
+      title_menu:`Vissza a főmenübe`, title_share:`Link másolása a pontos álláshoz`, title_setup:`Válaszd ki, ki játszik, a tábla méretét, a felállást és a szabályokat`,
+      title_encircle:`Az ejtőernyősök immunisak a hagyományos elfogásra — egy kihelyezett ejtőernyős csak akkor esik el, ha minden szomszédja ellenséges (a baráti drónok védik). Tartós horgonyokká teszi őket.`,
+      title_mobile:`Mozgó drónok: egy drón egy kör alatt egy mezőt léphet egy üres pontra egy kész ejtőernyős hatótávján belül. A bábuk mozognak, nem maradnak egy helyben — dinamikusabb, kevésbé Go-szerű játék.`,
+      win_new:`Új játék`, win_view:`Tábla megtekintése`,
+      handoff_title:`A lépésed megvan`, handoff_msg:`Küldd el ezt a linket az ellenfelednek — megnyitja, lép, majd visszaküld egyet.`, handoff_copy:`Link másolása`, handoff_view:`Tábla megtekintése`,
+      c_blue:`Kék`, c_red:`Piros`, score_area:`terület`,
+      lead_blue:`Kék vezet`, lead_red:`Piros vezet`, lead_tied:`döntetlen`,
+      st_draw:`<b>Döntetlen</b> — a terület {a}–{b}.`,
+      st_win_cap:`{dot}<b>{who} nyert</b> elfogással — {n} ejtőernyőst ejtett el.`,
+      st_win_terr:`{dot}<b>{who} nyert</b> területtel — {a}–{b} (+{lead}).`,
+      st_handoff:`Lépés kész — küldd el a linket az ellenfelednek a folytatáshoz.`,
+      st_waiting:`Várakozás ellenfélre… (a játékod a lobbiban van)`,
+      st_oppturn:`{dot}Az ellenfél köre — várakozás a lépésére…`,
+      st_thinking:`{dot}{who} (gép) gondolkodik…`,
+      st_passed:`{dot}{who} jön — az ellenfél <b>passzolt</b>. <b>Passzolj</b> te is a befejezéshez, vagy játssz tovább.`,
+      st_nomoves:`{dot}{who} nem tud lépni — nyomj <b>Passz</b>-t (két passz befejezi).`,
+      st_movedrone:`{dot}{who} — kattints egy világos pontra a drón odamozgatásához, vagy kattints rá újra a megszakításhoz.`,
+      st_act_trooper:`tegyél le egy ejtőernyőst bárhová`, st_act_drone:`telepíts egy drónt egy világos pontra`,
+      st_tomove:`{dot}{who} jön — {act}.`,
+      st_mobile_hint:` <span style="color:var(--muted)">· vagy kattints az egyik drónodra az áthelyezéséhez.</span>`,
+      st_pass_hint:` <span style="color:var(--muted)">· vagy <b>Passz</b>, ha kész vagy — két passz befejezi ({lead} {a}–{b}).</span>`,
+      win_draw_title:`Döntetlen`, win_draw_detail:`A terület {a}–{b}.`, win_title:`{who} nyert`,
+      win_cap_detail:`elfogással — {n} ejtőernyőst ejtett el.`, win_terr_detail:`területtel — {a}–{b} (+{lead}).`,
+      tst_link_copied:`Link másolva`, tst_no_invite:`Csak a játék létrehozójának van meghívó linkje`, tst_opp_joined:`Az ellenfél csatlakozott — te jössz.`,
+      tst_online_off:`Az online nincs beállítva`, tst_create_fail:`Nem sikerült létrehozni az online játékot`, tst_load_fail:`Ez a játék nem tölthető be — vissza a menübe.`,
+      tst_sync_fail:`A szinkronizálás nem sikerült`, tst_online_off2:`Az online játék nincs beállítva`, tst_listed:`A lobbiban — várakozás ellenfélre.`,
+      tst_open_fail:`Nem sikerült létrehozni a nyílt játékot`, tst_join_fail:`Nem sikerült csatlakozni — lehet, hogy foglalt`, tst_move_rejected:`A lépés elutasítva`,
+      tst_loaded_shared:`Megosztott játék betöltve`, tst_undo_online:`Online nincs visszavonás`, tst_resumed:`Játék folytatva`, prompt_copy:`Másold ki ezt a linket:`
     }
   };
   let LANG = (localStorage.getItem("hoshi_lang")==="hu") ? "hu" : "en";
+  function t(key, params){
+    let v=(I18N[LANG] && I18N[LANG][key]); if(v==null) v=(I18N.en[key]!=null?I18N.en[key]:key);
+    if(params) for(const k in params) v=v.split("{"+k+"}").join(params[k]);
+    return v;
+  }
+  function colorName(c){ return t(c===0?"c_blue":"c_red"); }
   function applyLang(lang){
     LANG = (lang==="hu") ? "hu" : "en";
     try{ localStorage.setItem("hoshi_lang", LANG); }catch(e){}
     const dict=I18N[LANG];
     document.querySelectorAll("[data-i18n]").forEach(el=>{ const v=dict[el.getAttribute("data-i18n")]; if(v!=null) el.innerHTML=v; });
+    document.querySelectorAll("[data-i18n-title]").forEach(el=>{ const v=dict[el.getAttribute("data-i18n-title")]; if(v!=null) el.title=v; });
+    document.querySelectorAll("[data-i18n-label]").forEach(el=>{ const v=dict[el.getAttribute("data-i18n-label")]; if(v!=null) el.label=v; });
     document.querySelectorAll(".langtoggle button").forEach(b=>b.classList.toggle("on", b.getAttribute("data-lang")===LANG));
+    if(typeof s!=="undefined" && s){ try{ status(); }catch(e){} }   // refresh the live status line
   }
   document.querySelectorAll(".langtoggle button").forEach(b=>b.onclick=()=>applyLang(b.getAttribute("data-lang")));
   const rulesModal=document.getElementById("rules");
@@ -1397,14 +1501,13 @@ if(typeof module!=='undefined') module.exports=Bot;
   const winModal=document.getElementById("winModal");
   function showWin(){
     const sc=Hoshi.areaScore(s);
-    const t=document.getElementById("winTitle"), d=document.getElementById("winDetail");
-    if(s.winner===-1){ t.textContent="Draw"; t.style.color="var(--ink)";
-      d.textContent=`Territory tied ${sc[0]}–${sc[1]}.`; }
-    else { const who=s.winner===0?"Blue":"Red";
-      const byCap=s.lostTroopers[1-s.winner]>=s.captureToWin;
-      t.textContent=`${who} wins`; t.style.color=s.winner===0?"var(--blue)":"var(--red)";
-      d.textContent = byCap ? `by decapitation — captured ${s.captureToWin} troopers.`
-                            : `by territory — ${sc[0]}–${sc[1]} (+${Math.abs(sc[0]-sc[1])}).`; }
+    const titleEl=document.getElementById("winTitle"), detailEl=document.getElementById("winDetail");
+    if(s.winner===-1){ titleEl.textContent=t("win_draw_title"); titleEl.style.color="var(--ink)";
+      detailEl.textContent=t("win_draw_detail",{a:sc[0],b:sc[1]}); }
+    else { const byCap=s.lostTroopers[1-s.winner]>=s.captureToWin;
+      titleEl.textContent=t("win_title",{who:colorName(s.winner)}); titleEl.style.color=s.winner===0?"var(--blue)":"var(--red)";
+      detailEl.textContent = byCap ? t("win_cap_detail",{n:s.captureToWin})
+                                   : t("win_terr_detail",{a:sc[0],b:sc[1],lead:Math.abs(sc[0]-sc[1])}); }
     winModal.classList.add("show");
   }
   const hideWin=()=>winModal.classList.remove("show");
@@ -1447,7 +1550,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   document.getElementById("lndInvite").onclick=()=>startMode("online");                 // private capability link
   document.getElementById("lndOpen").onclick=()=>{ hideLanding(); persistSettings(); createOpenGame(curN(),curVariant()); };
   document.getElementById("lndResume").onclick=()=>{ hideLanding();
-    try{ const o=JSON.parse(localStorage.getItem("hoshi_save")); if(o&&o.st){ loadPayload(o); toast("Resumed your game"); return; } }catch(e){}
+    try{ const o=JSON.parse(localStorage.getItem("hoshi_save")); if(o&&o.st){ loadPayload(o); toast(t("tst_resumed")); return; } }catch(e){}
     start(); };
   document.getElementById("lndRules").onclick=(e)=>{ e.preventDefault(); showRules(); };
   document.getElementById("menuBtn").onclick=()=>{ cancelOpenIfWaiting(); showLanding(); };

@@ -62,6 +62,21 @@ ruleset (CANON = `base-r4` = live shipped default; mobile/encircle get their own
   no search. The endgame; WASM-ing the engine is the alternative heavy lift.
   (Full lookup tables are infeasible — Hoshi is Go-scale.)
 
+## OPEN — landing rebuild (tight version SHIPPED; these deferred)
+The dark-hero funnel is live (silent ambient demo, thesis + dominant Play, three
+`miniBoard()` beats, hoshi_seen/hoshi_save routing, reduced-motion static frame).
+Still TODO from the landing brief:
+1. **Cockpit relocation** (biggest): move difficulty/speed/size/setup/variation
+   toggles + the 5 mode buttons OUT of the always-visible `.controls` bar and INTO
+   the in-game "Menu". They still show during play.
+2. **In-game just-in-time tutorial** — 3 first-game coachmarks (gate on a flag).
+3. Below-fold "Two ways to win" depth cards + dad-and-son origin story.
+4. Returning-with-no-save still shows the hero (minor; mid-game resume works).
+
+Also tunable: **trooper_loss_penalty = 4** (Wilson floated 3–5). Expert tier +
+Watch personalities (Territorial/Expansionist/Hunter, coevolved balanced set) are
+SHIPPED.
+
 ## Future phases (parked — not started)
 - **Terrain / landmarks (Dominic's idea).** Themed board backgrounds with FIXED
   impassable cells you must play around — a mountain, urban-warfare rubble, water,

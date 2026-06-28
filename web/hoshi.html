@@ -233,6 +233,7 @@
   <button id="share" class="ctl-quiet" data-i18n="btn_copylink" data-i18n-title="title_share" title="Copy a link to this exact position">Copy link</button>
   <button id="new" class="ctl-quiet" data-i18n="btn_new">New game</button>
   <button id="soundToggle" class="ctl-quiet" data-i18n-title="title_sound" title="Toggle move sounds" aria-label="Toggle move sounds">&#128266;</button>
+  <button id="musicToggle" class="ctl-quiet" data-i18n-title="title_music" title="Toggle music" aria-label="Toggle music">&#127925;</button>
   <button id="setupToggle" class="ctl-quiet" aria-expanded="false" aria-controls="setupTray" data-i18n-title="title_setup" title="Choose who plays, board size, variant, and rule toggles">&#9881; <span data-i18n="btn_setup">Game setup</span> <span class="chev">&#9656;</span></button>
  </div>
  <div class="controls-row controls-setup" id="setupTray" hidden>
@@ -301,6 +302,9 @@
 <a class="small" id="rulesLink" data-i18n="rulesLink">how to play</a>
 
 <div id="toast"></div>
+<!-- Background music: Gymnopédie No. 1 (Erik Satie), recording by Teknopazzo, CC0 / public domain.
+     preload=none so it never delays first paint; starts only after a user gesture (autoplay policy). -->
+<audio id="bgm" src="gymnopedie.mp3" loop preload="none"></audio>
 
 
 <div class="modal" id="handoffModal">
@@ -352,6 +356,7 @@
     <h3 data-i18n="setup_h">Setups</h3>
     <p data-i18n="setup_p">The setup dropdown only changes <i>where your troopers start</i> — the rules
        never change. More committed forward = more early pressure, less flexibility.</p>
+    <p style="font-size:11px;color:var(--muted);margin-top:16px">Music: <i>Gymnopédie No. 1</i> (Erik Satie) · recording by Teknopazzo · public domain (CC0).</p>
   </div>
 </div>
 
@@ -930,6 +935,18 @@ if(typeof module!=='undefined') module.exports=Bot;
     else if(kind==='drone'){ blip(ac, 340, 0.07, 'sine', 0.13); }        // soft blip — drone
     else if(kind==='pass'){ blip(ac, 150, 0.06, 'sine', 0.07); }         // faint tick — pass
   }
+  // ── Background music: looping Gymnopédie No. 1 (Satie, CC0). Browsers block
+  //    autoplay, so it starts on the first user gesture; the toggle persists.
+  let MUSIC = (localStorage.getItem("hoshi_music")!=="off");
+  const BGM_VOL = 0.32;
+  function startMusic(){
+    if(!MUSIC) return; const a=document.getElementById("bgm"); if(!a || !a.paused) return;
+    a.volume=0; const p=a.play();
+    if(p && p.catch) p.catch(()=>{});
+    let v=0; const id=setInterval(()=>{ v=Math.min(BGM_VOL, v+0.04); a.volume=v; if(v>=BGM_VOL) clearInterval(id); }, 60);
+  }
+  function stopMusic(){ const a=document.getElementById("bgm"); if(a) a.pause(); }
+  function syncMusicIcon(){ const b=document.getElementById("musicToggle"); if(b) b.style.opacity = MUSIC?"1":"0.4"; }
   // expanding ring when a stone lands (motion cue)
   function placeRipple(i,color){
     const[r,c]=Hoshi.rc(s.N,i);
@@ -1408,7 +1425,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       tog_encircle:`Trooper encirclement`, tog_mobile:`Mobile drones`, vs:`vs`,
       // tooltips
       title_pass:`Pass your turn. Two passes in a row end the game and score territory.`,
-      title_menu:`Back to the main menu`, title_share:`Copy a link to this exact position`, title_setup:`Choose who plays, board size, variant, and rule toggles`, title_sound:`Toggle move sounds`,
+      title_menu:`Back to the main menu`, title_share:`Copy a link to this exact position`, title_setup:`Choose who plays, board size, variant, and rule toggles`, title_sound:`Toggle move sounds`, title_music:`Toggle music`,
       title_encircle:`Troopers are immune to ordinary capture — a deployed trooper falls only when every neighbor is an enemy stone (friendly drones shield it). Makes troopers durable anchors.`,
       title_mobile:`Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game.`,
       // modals
@@ -1472,7 +1489,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       spd_normal:`Normál`, spd_fast:`Gyors`, spd_turbo:`Turbó`,
       tog_encircle:`Ejtőernyős-bekerítés`, tog_mobile:`Mozgó drónok`, vs:`vs`,
       title_pass:`Passzold a köröd. Két passz egymás után befejezi a játékot és területet számol.`,
-      title_menu:`Vissza a főmenübe`, title_share:`Link másolása a pontos álláshoz`, title_setup:`Válaszd ki, ki játszik, a tábla méretét, a felállást és a szabályokat`, title_sound:`Hangok be/ki`,
+      title_menu:`Vissza a főmenübe`, title_share:`Link másolása a pontos álláshoz`, title_setup:`Válaszd ki, ki játszik, a tábla méretét, a felállást és a szabályokat`, title_sound:`Hangok be/ki`, title_music:`Zene be/ki`,
       title_encircle:`Az ejtőernyősök immunisak a hagyományos elfogásra — egy kihelyezett ejtőernyős csak akkor esik el, ha minden szomszédja ellenséges (a baráti drónok védik). Tartós horgonyokká teszi őket.`,
       title_mobile:`Mozgó drónok: egy drón egy kör alatt egy mezőt léphet egy üres pontra egy kész ejtőernyős hatótávján belül. A bábuk mozognak, nem maradnak egy helyben — dinamikusabb, kevésbé Go-szerű játék.`,
       win_new:`Új játék`, win_view:`Tábla megtekintése`,
@@ -1597,6 +1614,14 @@ if(typeof module!=='undefined') module.exports=Bot;
     syncSoundIcon();
   };
   syncSoundIcon();
+  document.getElementById("musicToggle").onclick=()=>{
+    MUSIC=!MUSIC; try{ localStorage.setItem("hoshi_music", MUSIC?"on":"off"); }catch(e){}
+    if(MUSIC) startMusic(); else stopMusic();   // this click is the user gesture autoplay needs
+    syncMusicIcon();
+  };
+  syncMusicIcon();
+  // autoplay policy: kick the loop off on the very first user gesture, if music is enabled
+  document.addEventListener("pointerdown", function once(){ startMusic(); document.removeEventListener("pointerdown", once); }, {passive:true});
 
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ hideRules(); hideWin(); hideHandoff(); } });
 

@@ -537,7 +537,7 @@ if(typeof module!=='undefined') module.exports=Bot;
 (function(){
   const SVGNS="http://www.w3.org/2000/svg";
   const board=document.getElementById("board");
-  let s, mode='trooper', hist=[];
+  let s, mode='trooper', hist=[], gameMoves=[];   // gameMoves: ordered move list for the analytics log
   let moveSrc=null;                            // mobile drones: drone picked up to relocate
   let ambient=false;                           // a looping cpu-vs-cpu demo behind the landing
   let players=['human','human'], moveSeq=0;   // moveSeq invalidates stale bot timeouts
@@ -565,7 +565,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     players = md==='vscpu' ? ['human','cpu'] : md==='cpucpu' ? ['cpu','cpu'] : ['human','human'];
     s=Hoshi.newState(N,variant); s.encircle=document.getElementById("encircle").checked;
     s.mobileDrones=document.getElementById("mobile").checked;
-    hist=[]; mode='trooper'; lastMove=null; moveSrc=null; awaitingHandoff=false; moveSeq++;
+    hist=[]; gameMoves=[]; mode='trooper'; lastMove=null; moveSrc=null; awaitingHandoff=false; moveSeq++;
     buildBoard(); render(); scheduleBot();
   }
 
@@ -577,7 +577,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     s=Hoshi.newState(curN(),curVariant());
     s.encircle=document.getElementById("encircle").checked;
     s.mobileDrones=document.getElementById("mobile").checked;
-    hist=[]; mode='trooper'; lastMove=null; moveSrc=null; winShown=false; awaitingHandoff=false; moveSeq++;
+    hist=[]; gameMoves=[]; mode='trooper'; lastMove=null; moveSrc=null; winShown=false; awaitingHandoff=false; moveSeq++;
     buildBoard();
     // prefers-reduced-motion: render a single populated mid-game frame, no animation
     if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches){
@@ -833,7 +833,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     status();
     syncShareUI();                                             // Copy link only shows for a live correspondence game
     if(!ambient) persist();                                    // ambient demo must not clobber the saved game
-    if(s.over){ if(!ambient && !winShown){ winShown=true; showWin(); } }   // winner is set server-side (Tier 1.5)
+    if(s.over){ if(!ambient && !winShown){ winShown=true; showWin(); logGame(); } }   // winner is set server-side (Tier 1.5)
     else { winShown=false; hideWin(); }
   }
   // owner[i] = 0/1 for an empty point fully enclosed by one color, else null.
@@ -868,7 +868,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       for(let i=0;i<ns.board.length;i++) if(before[i] && !ns.board[i] && i!==move.from) caps.push({i,c:before[i].c});
       lastMove=landing;
     } else { lastMove=null; }
-    hist.push(s); s=ns; moveSeq++;
+    hist.push(s); gameMoves.push(move); s=ns; moveSeq++;
     if(move.type!=='pass') placeRipple(landing, mover===0?"var(--blue)":"var(--red)");
     flashCaptures(caps);
     return true;
@@ -1027,8 +1027,47 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(c.mobile!=null) document.getElementById("mobile").checked=c.mobile; }catch(e){} }
   function stateToObj(st){ return {...st, history:[...st.history]}; }
   function stateFromObj(o){ return {...o, history:new Set(o.history)}; }
+  // ── Analytics: snapshot every finished game (all modes, never the ambient demo)
+  //    into Supabase for later analysis (openings, end-states, balance). RLS-locked
+  //    table; the only write path is the log_game() RPC. No-ops if Supabase is off.
+  function anonCID(){ try{ let id=localStorage.getItem("hoshi_cid");
+    if(!id){ id=(window.crypto&&crypto.randomUUID)?crypto.randomUUID()
+                 :("c"+Date.now()+Math.random().toString(36).slice(2));
+      localStorage.setItem("hoshi_cid",id); }
+    return id; }catch(e){ return null; } }
+  function gameWinType(){                                  // how the game ended
+    if(!s.over) return null;
+    if(s.lostTroopers[0]>=s.captureToWin || s.lostTroopers[1]>=s.captureToWin) return "decap";
+    if((s.passes||0)>=2) return "territory";
+    if(s.ply>=s.maxPlies) return "maxplies";
+    return "territory";
+  }
+  function tierOf(seat){                                   // the cpu strength/style on a seat (else null)
+    if(players[seat]!=="cpu") return null;
+    const watch=document.getElementById("mode").value==="cpucpu";
+    return document.getElementById(watch&&seat===1?"diff2":"diff").value;
+  }
+  function logGame(){
+    try{
+      if(!window.hoshiDB) return;                          // analytics is best-effort
+      const sc=Hoshi.areaScore(s), md=document.getElementById("mode").value;
+      const variant=document.getElementById("variant").value;
+      const payload={
+        source:md, board_n:s.N, drone_range:s.R,
+        variant0:(online&&online.variant0)||variant, variant1:(online&&online.variant1)||variant,
+        encircle:!!s.encircle, mobile:!!s.mobileDrones,
+        blue_player:players[0], red_player:players[1],
+        blue_tier:tierOf(0), red_tier:tierOf(1),
+        winner:s.winner, win_type:gameWinType(),
+        score_blue:sc[0], score_red:sc[1], plies:s.ply,
+        moves:gameMoves, client_id:anonCID(),
+        online_game_id:(online&&online.gameId)||null
+      };
+      hoshiDB.rpc("log_game",{p:payload}).then(()=>{},()=>{});   // fire-and-forget
+    }catch(e){}
+  }
   function persist(){ try{ localStorage.setItem("hoshi_save",
-    JSON.stringify({st:stateToObj(s), players})); }catch(e){} }
+    JSON.stringify({st:stateToObj(s), players, moves:gameMoves})); }catch(e){} }
   // Compact share codec — keeps links short enough to text. One char per cell;
   // omits the superko history (reseeds empty) and placedPly (every trooper is
   // ready at a turn boundary, which is what a shared position always is).
@@ -1056,7 +1095,7 @@ if(typeof module!=='undefined') module.exports=Bot;
   function linkFor(pvp){ return location.href.split("#")[0]+"#g="+encodeShare(pvp); }
   function loadPayload(o){
     s=stateFromObj(o.st); players=o.players||["human","human"];
-    hist=[]; lastMove=null; mode='trooper'; moveSrc=null; awaitingHandoff=false; moveSeq++;
+    hist=[]; gameMoves=o.moves||[]; lastMove=null; mode='trooper'; moveSrc=null; awaitingHandoff=false; moveSeq++;
     if(o.pvp) document.getElementById("mode").value="bylink";   // receiver enters by-link mode
     buildBoard(); render(); scheduleBot();
   }
@@ -1130,7 +1169,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       const {game_id,blue_token,red_token}=data[0];
       online={gameId:game_id, seat:0, token:blue_token, invite:onlineLink(game_id,1,red_token)};
       saveOnline();
-      players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
+      players=["human","human"]; s=st; hist=[]; gameMoves=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);  // no token in the bar
       buildBoard(); render(); showInvite(online.invite);
       subscribeOnline();
@@ -1150,7 +1189,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       if(mv.error) throw mv.error;
       let st=stateFromObj(init);
       for(const row of mv.data){ const ns=Hoshi.apply(st,row.move); if(ns) st=ns; }
-      players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
+      players=["human","human"]; s=st; hist=[]; gameMoves=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       buildBoard(); render(); subscribeOnline(); return true;
     }catch(e){ console.error(e); toast("Sync failed"); return false; }
   }
@@ -1171,7 +1210,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       const {game_id,blue_token}=data[0];
       online={gameId:game_id, seat:0, token:blue_token, waiting:true};
       saveOnline();
-      players=["human","human"]; s=st; hist=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
+      players=["human","human"]; s=st; hist=[]; gameMoves=[]; mode="trooper"; lastMove=null; awaitingHandoff=false; moveSeq++;
       history.replaceState(null,"",location.pathname+location.search+"#o="+game_id);
       buildBoard(); render(); subscribeOnline();
       toast("Listed in the lobby — waiting for an opponent.");
@@ -1226,7 +1265,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       {body:{game_id:online.gameId, seat_token:online.token, move}});
     if(error || !data || !data.ok){    // rejected (not your turn / illegal / over) → roll back
       toast((data&&data.error) || (error&&error.message) || "Move rejected");
-      if(hist.length){ s=hist.pop(); moveSeq++; lastMove=null; render(); }
+      if(hist.length){ s=hist.pop(); gameMoves.pop(); moveSeq++; lastMove=null; render(); }
     }
   }
 
@@ -1264,8 +1303,8 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(document.getElementById("mode").value!=="bylink") scheduleBot(); };  // ending shows the win popup
   document.getElementById("undo").onclick=()=>{ if(online){ toast("Undo isn't available online"); return; }
     if(!hist.length)return;
-    s=hist.pop();
-    while(hist.length && players[s.toMove]==='cpu') s=hist.pop();  // back to your own turn
+    s=hist.pop(); gameMoves.pop();
+    while(hist.length && players[s.toMove]==='cpu'){ s=hist.pop(); gameMoves.pop(); }  // back to your own turn
     moveSeq++; lastMove=null; moveSrc=null; awaitingHandoff=false; // allow redoing a not-yet-sent move
     document.getElementById("handoffModal").classList.remove("show");
     render(); };

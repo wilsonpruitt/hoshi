@@ -213,6 +213,6 @@ const Hoshi = (function(){
   }
 
   return {makeConfig,newState,apply,legalMoves,legalDrone,legalTrooper,
-          readyTroopers,ready,areaScore,groupLib,cheb,orth,idx,rc};
+          readyTroopers,ready,areaScore,groupLib,cheb,orth,idx,rc,posKey};
 })();
 if(typeof module!=='undefined') module.exports=Hoshi;

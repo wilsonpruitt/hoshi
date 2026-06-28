@@ -704,6 +704,20 @@ if(typeof module!=='undefined') module.exports=Bot;
       worker.onerror=()=>{ worker=null; };
     }catch(e){ worker=null; }
   }
+  // Opening book: precomputed strong moves for the early game, used ONLY by the
+  // MCTS (Hard) tier — the only one with think-time lag. Returns a move object or
+  // null (off-book / config mismatch → live search). Other tiers are already
+  // instant 1-ply, and we don't want the book to make Easy/Medium play stronger.
+  let OPENING_BOOK=null;
+  function bookMove(st){
+    const bk=OPENING_BOOK; if(!bk) return null;
+    if(st.N!==bk.cfg.N || st.R!==bk.cfg.R || st.encircle || st.mobileDrones) return null;
+    const code=bk.book[Hoshi.posKey(st.board, st.toMove)];
+    if(!code) return null;
+    if(code[0]==='p') return {type:'pass'};
+    const i=+code.slice(1);
+    return {type: code[0]==='t'?'trooper':'drone', i};
+  }
   function scheduleBot(){
     if(s.over || players[s.toMove]!=='cpu') return;
     // ambient demo plays a snappy, lively greedy (a little blunder for variety); real
@@ -711,6 +725,10 @@ if(typeof module!=='undefined') module.exports=Bot;
     const seq=moveSeq, depthCap=s.N>=13?28:36;
     const {sims,blunder,weights}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
     botStart=Date.now();
+    if(!ambient && sims>0){                         // Hard tier: try the opening book first (instant)
+      const bm=bookMove(s);
+      if(bm){ botMinThink=document.getElementById("mode").value==='cpucpu'?450:300; pacedApply(bm,seq); return; }
+    }
     const watching = document.getElementById("mode").value==='cpucpu';
     const effSpeed = (watching && watchBotsAreFast()) ? document.getElementById("watchSpeed").value : "normal";
     const spd = {normal:800, fast:250, turbo:40}[effSpeed] ?? 800;
@@ -1274,6 +1292,7 @@ if(typeof module!=='undefined') module.exports=Bot;
     syncDiffUI();
     buildHowPanels();
     initWorker();
+    fetch("opening-book.json").then(r=>r.ok?r.json():null).then(b=>{OPENING_BOOK=b;}).catch(()=>{});  // best-effort; off → live search
     const h=location.hash;
     if(h.startsWith("#o=")){                       // online: invite link or resume
       const parts=h.slice(3).split(":");           // gameId[:seat:token]

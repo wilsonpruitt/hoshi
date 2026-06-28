@@ -40,7 +40,19 @@
   .dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin:0 4px}
   #board{background:var(--paper);border-radius:6px;
          box-shadow:0 8px 30px rgba(0,0,0,.22), inset 0 0 0 1px rgba(0,0,0,.06);touch-action:manipulation}
-  .controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px;max-width:560px}
+  /* Cockpit: turn-moves on top, a quiet session row, and a collapsible setup tray.
+     Move/setup split so a live action no longer looks like a "what kind of game" dropdown. */
+  .controls{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:12px;max-width:620px}
+  .controls-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+  .controls-session{gap:6px}
+  .controls-session .ctl-quiet{font-size:13px;color:var(--muted);padding:7px 12px}
+  .controls-session .ctl-quiet:hover{color:var(--ink)}
+  #setupToggle .chev{display:inline-block;transition:transform .15s;font-size:11px}
+  #setupToggle[aria-expanded="true"] .chev{transform:rotate(90deg)}
+  #setupToggle[aria-expanded="true"]{color:var(--ink);background:#fff8e8}
+  .controls-setup{margin-top:2px;padding:12px 14px;border:1px solid #00000018;border-radius:12px;
+    background:rgba(0,0,0,.035);max-width:600px}
+  .controls-setup[hidden]{display:none}          /* beat flex's display so the attribute actually hides it */
   button,select{font-family:inherit;font-size:14px;border:1px solid #00000022;border-radius:8px;
     padding:9px 13px;background:var(--panel);color:var(--ink);cursor:pointer;font-weight:500}
   button:hover{background:#fff8e8}
@@ -141,13 +153,27 @@
   #hero .cta:focus-visible, #hero .cta-secondary .link:focus-visible{ outline:2px solid #7fb0e8; outline-offset:3px; }
   @media(prefers-reduced-motion:reduce){ #hero .cta{ transition:none; } }
   @media(max-width:560px){ #beats ol{ grid-template-columns:1fr; gap:20px; } }
+  /* Light-mode landing — follow the system preference so the hero isn't dark for
+     everyone. The board stays the one warm "lit" object; everything around it
+     flips to the paper palette. CTA blue is unchanged. */
+  @media (prefers-color-scheme: light){
+    body.landing{ background:#d9cba8; color:var(--ink); }
+    body.landing #hero .wordmark{ color:var(--ink); }
+    body.landing #hero .thesis{ color:var(--ink); }
+    body.landing #hero .subline,
+    body.landing #hero .cta-secondary,
+    body.landing #beats p{ color:var(--muted); }
+    body.landing #hero .cta-secondary .link{ color:var(--ink); }
+    body.landing #beats h3{ color:var(--ink); }
+    body.landing #board{ box-shadow:0 14px 46px rgba(0,0,0,.28); }
+  }
 </style>
 </head>
 <body class="landing">
 <section id="hero">
   <a class="wordmark" id="heroLogo" href="#" aria-label="HOSHI — back to start">HOSHI</a>
-  <h1 class="thesis">Go, but you drop the stones.</h1>
-  <p class="subline">Drop anchors, spread drones, and win two ways — capture your opponent, or out-claim them.</p>
+  <h1 class="thesis">Territory is everything.<br>So is the one holding it.</h1>
+  <p class="subline">Drop anchors, spread drones, win two ways — hold the most ground, or capture the enemy.</p>
   <button id="ctaPlay" class="cta">&#9654; Play</button>
   <p class="cta-secondary">
     <button class="link" id="ctaFriend">Play a friend</button> &middot;
@@ -181,22 +207,28 @@
     <li><figure id="beat3"></figure><h3>Surround to win</h3>
         <p>Capture by surrounding — or hold the most ground when the game ends.</p></li>
   </ol>
-  <p class="cta-secondary" style="margin-top:18px">
+  <p class="cta-secondary" style="margin-top:18px;display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap">
     <button class="link" id="lndResume" style="display:none">Resume your game</button>
-    <button class="link" id="lndOpen">Host an online game</button> &middot;
-    <button class="link" id="lndInvite">Private invite</button> &middot;
-    <a class="link" id="lndRules">How to play</a>
+    <button class="link" id="lndOpen">Host an online game</button>
+    <button class="link" id="lndInvite">Private invite</button>
+    <button class="link" id="lndRules">How to play</button>
   </p>
   <div id="openGamesList" style="display:none"></div>
 </section>
 <div class="controls">
+ <div class="controls-row controls-moves">
   <button id="mTrooper">Place trooper</button>
   <button id="mDrone">Deploy drone</button>
   <button id="pass" title="Pass your turn. Two passes in a row end the game and score territory.">Pass</button>
   <button id="undo">Undo</button>
-  <button id="new">New game</button>
-  <button id="menuBtn" title="Back to the main menu">Menu</button>
-  <button id="share" title="Copy a link to this exact position">Copy link</button>
+ </div>
+ <div class="controls-row controls-session">
+  <button id="menuBtn" class="ctl-quiet" title="Back to the main menu">Menu</button>
+  <button id="share" class="ctl-quiet" title="Copy a link to this exact position">Copy link</button>
+  <button id="new" class="ctl-quiet">New game</button>
+  <button id="setupToggle" class="ctl-quiet" aria-expanded="false" aria-controls="setupTray" title="Choose who plays, board size, variant, and rule toggles">&#9881; Game setup <span class="chev">&#9656;</span></button>
+ </div>
+ <div class="controls-row controls-setup" id="setupTray" hidden>
   <select id="mode" title="Who controls each side">
     <option value="hotseat">2 players (hot-seat)</option>
     <option value="vscpu">vs Computer (you are Blue)</option>
@@ -205,6 +237,7 @@
     <option value="online">Play online (live)</option>
   </select>
   <span class="diffgroup" style="display:inline-flex;align-items:center;gap:6px">
+    <span class="dot" id="diffDotBlue" style="background:var(--blue);margin:0;display:none" title="Blue computer"></span>
     <select id="diff" title="Computer strength — in Watch mode this is Blue's strength">
       <optgroup label="Strength">
         <option value="easy">Easy</option>
@@ -219,6 +252,7 @@
       </optgroup>
     </select>
     <span id="diffVs" style="display:none;color:var(--muted);font-size:12px">vs</span>
+    <span class="dot" id="diffDotRed" style="background:var(--red);margin:0;display:none" title="Red computer"></span>
     <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
       <optgroup label="Strength">
         <option value="easy">Easy</option>
@@ -255,6 +289,7 @@
   <label id="mobileLbl" title="Mobile drones: a drone can spend a turn to step one space to an empty point within a ready trooper's range. Pieces maneuver instead of staying put — a more dynamic, less Go-like game." style="font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer">
     <input type="checkbox" id="mobile"> Mobile drones
   </label>
+ </div>
 </div>
 <a class="small" id="rulesLink">how to play</a>
 
@@ -796,6 +831,7 @@ if(typeof module!=='undefined') module.exports=Bot;
       `area &nbsp;<span class="dot" style="background:var(--blue)"></span><b>${sc[0]}</b>`+
       ` &nbsp;&ndash;&nbsp; <span class="dot" style="background:var(--red)"></span><b>${sc[1]}</b>`;
     status();
+    syncShareUI();                                             // Copy link only shows for a live correspondence game
     if(!ambient) persist();                                    // ambient demo must not clobber the saved game
     if(s.over){ if(!ambient && !winShown){ winShown=true; showWin(); } }   // winner is set server-side (Tier 1.5)
     else { winShown=false; hideWin(); }
@@ -969,9 +1005,17 @@ if(typeof module!=='undefined') module.exports=Bot;
     const watch=document.getElementById("mode").value==='cpucpu';
     document.getElementById("diff2").style.display=watch?"":"none";
     document.getElementById("diffVs").style.display=watch?"":"none";
+    document.getElementById("diffDotBlue").style.display=watch?"":"none";   // mark which selector drives which color
+    document.getElementById("diffDotRed").style.display=watch?"":"none";
     // Fast/Turbo only smooth out the lower (greedy) tiers — Hard's MCTS think-time
     // dominates and makes them lurch in spurts. Hide speed if either side is Hard.
     document.getElementById("watchSpeed").style.display=(watch && watchBotsAreFast())?"":"none";
+    syncShareUI();
+  }
+  function syncShareUI(){   // "Copy link" only matters for a correspondence game: by-link, or an online game you host
+    const md=document.getElementById("mode").value;
+    const show = md==="bylink" || (md==="online" && !!(online && online.invite));
+    document.getElementById("share").style.display = show ? "" : "none";
   }
   function persistSettings(){ try{ const c={}; cfgKeys.forEach(k=>c[k]=document.getElementById(k).value);
     c.encircle=document.getElementById("encircle").checked;
@@ -1300,6 +1344,12 @@ if(typeof module!=='undefined') module.exports=Bot;
     start(); };
   document.getElementById("lndRules").onclick=(e)=>{ e.preventDefault(); showRules(); };
   document.getElementById("menuBtn").onclick=()=>{ cancelOpenIfWaiting(); showLanding(); };
+  document.getElementById("setupToggle").onclick=()=>{   // expand/collapse the game-setup tray
+    const tray=document.getElementById("setupTray"), btn=document.getElementById("setupToggle");
+    const open=tray.hasAttribute("hidden");
+    if(open) tray.removeAttribute("hidden"); else tray.setAttribute("hidden","");
+    btn.setAttribute("aria-expanded", open?"true":"false");
+  };
 
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ hideRules(); hideWin(); hideHandoff(); } });
 

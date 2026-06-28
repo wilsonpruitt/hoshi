@@ -148,17 +148,31 @@
   </select>
   <span class="diffgroup" style="display:inline-flex;align-items:center;gap:6px">
     <select id="diff" title="Computer strength — in Watch mode this is Blue's strength">
-      <option value="easy">Easy</option>
-      <option value="medium" selected>Medium</option>
-      <option value="hard">Hard</option>
-      <option value="expert">Expert</option>
+      <optgroup label="Strength">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+        <option value="expert">Expert</option>
+      </optgroup>
+      <optgroup label="Style (balanced, for watching)">
+        <option value="style_territorial">Territorial</option>
+        <option value="style_expansionist">Expansionist</option>
+        <option value="style_hunter">Hunter</option>
+      </optgroup>
     </select>
     <span id="diffVs" style="display:none;color:var(--muted);font-size:12px">vs</span>
     <select id="diff2" title="Red computer's strength (Watch mode only)" style="display:none">
-      <option value="easy">Easy</option>
-      <option value="medium">Medium</option>
-      <option value="hard" selected>Hard</option>
-      <option value="expert">Expert</option>
+      <optgroup label="Strength">
+        <option value="easy">Easy</option>
+        <option value="medium">Medium</option>
+        <option value="hard" selected>Hard</option>
+        <option value="expert">Expert</option>
+      </optgroup>
+      <optgroup label="Style (balanced, for watching)">
+        <option value="style_territorial">Territorial</option>
+        <option value="style_expansionist">Expansionist</option>
+        <option value="style_hunter">Hunter</option>
+      </optgroup>
     </select>
     <select id="watchSpeed" title="Playback speed (Watch mode)" style="display:none">
       <option value="normal">Normal</option>
@@ -559,8 +573,17 @@ if(typeof module!=='undefined') module.exports=Bot;
     if(d==='easy') return {sims:0,   blunder:0.4};   // greedy that slips often — beatable
     if(d==='hard') return {sims:240, blunder:0};     // MCTS lookahead
     if(d==='expert') return {sims:0, blunder:0, weights:EXPERT_WEIGHTS}; // fast 1-ply, learned eval
+    if(STYLE_WEIGHTS[d]) return {sims:0, blunder:0, weights:STYLE_WEIGHTS[d]}; // a personality (fast 1-ply)
     return {sims:0, blunder:0};                       // Medium = clean, sharp 1-ply greedy
   }
+  // Watch personalities: a coevolved, BALANCED cyclic set (each ~50% vs the others,
+  // confirmed at gpp=12) so cpu-vs-cpu is varied AND fair. All fast 1-ply. weight
+  // order {cap,area,cov,spc,prs,res}.
+  const STYLE_WEIGHTS={
+    style_territorial:  {cap:18.0, area:3.20, cov:0.60, spc:3.00, prs:0.50, res:3.00}, // turtle, hoards reserve
+    style_expansionist: {cap:31.8, area:1.20, cov:2.60, spc:2.28, prs:0.80, res:2.00}, // spreads wide for reach
+    style_hunter:       {cap:30.0, area:1.50, cov:0.80, spc:3.00, prs:1.00, res:2.00}, // chases captures
+  };
   // Expert = the strength-run's learned weight vector, played as a FAST 1-ply bot
   // (no MCTS = no think-time/spurts). Tuned on base-r4 WITH the trooper-loss penalty:
   // a distinct style — spread troopers, squeeze liberties, keep a reserve, don't

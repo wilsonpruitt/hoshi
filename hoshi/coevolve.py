@@ -75,15 +75,29 @@ def pressure(s, me):
     return pr
 
 
+def fast_area_diff(s, me):
+    """Cheap stand-in for area_score during the greedy search: stone count minus the
+    lost-trooper penalty, skipping the O(N^2) territory flood-fill (territory only
+    resolves late-game). ~5-10x faster per candidate move, which makes the GA viable."""
+    opp = 1 - me
+    sm = so = 0
+    for (c, _k) in s.board.values():
+        if c == me:
+            sm += 1
+        else:
+            so += 1
+    pen = s.cfg.trooper_loss_penalty
+    return (sm - pen * s.lost_troopers[me]) - (so - pen * s.lost_troopers[opp])
+
+
 def features(s, me):
     opp = 1 - me
-    a = area_score(s)
     # reserve: value holding a SMALL reserve (up to 2) to replace fallen troopers
     # later — capped so the bot still deploys most of them for board presence.
     res = min(s.reserve[me], 2) - min(s.reserve[opp], 2)
     return (
         (s.lost_troopers[opp] - s.lost_troopers[me]),
-        (a[me] - a[opp]),
+        fast_area_diff(s, me),
         (coverage(s, me) - coverage(s, opp)),
         (clump(s, opp) - clump(s, me)),
         pressure(s, me),
@@ -346,21 +360,29 @@ def main():
         return
 
     if mode == "evolve":
+        from dataclasses import replace
         which = sys.argv[2] if len(sys.argv) > 2 else CANON
         gens = int(sys.argv[3]) if len(sys.argv) > 3 else 6
-        best = coevolve(which=which, gens=gens)
-        print(f"\nBEST population (gen {best['gen']}, obj={best['score']}, "
-              f"intransitivity={best['metrics']['intransitivity']}, "
-              f"dominance={best['metrics']['dominance']}):")
-        # show the styles carrying real alpha-rank mass (the live, diverse ones)
-        pi = best["metrics"]["alpha"]
-        ranked = sorted(range(len(best["pop"])), key=lambda i: -pi[i])
-        for i in ranked:
+        gpp = int(sys.argv[4]) if len(sys.argv) > 4 else 3
+        best = coevolve(which=which, pop_size=6, gens=gens, gpp=gpp, max_plies=80, workers=2)
+        # confirmation of the winning population at higher fidelity (per-gen metrics
+        # use few games/pair and are noisy).
+        cfg = replace(CONFIGS[which], max_plies=80)
+        pop = [tuple(w) for w in best["pop"]]
+        Wc = payoff_matrix_par(cfg, pop, ["beachhead"] * len(pop), gpp=8, workers=2, seed=777)
+        mc = diversity_metrics(Wc)
+        print(f"\nBEST population (gen {best['gen']}) — CONFIRMED at gpp=12: "
+              f"intransitivity={mc['intransitivity']}  dominance={mc['dominance']}  "
+              f"nash_support={mc['nash_support']}")
+        pi = mc["alpha"]
+        avg = Wc.mean(axis=1)
+        for i in sorted(range(len(pop)), key=lambda i: -pi[i]):
             w = best["pop"][i]
             mark = "*" if pi[i] > 0.05 else " "
-            print(f" {mark} alpha={pi[i]:.3f}  {describe(w):>12}  "
+            print(f" {mark} alpha={pi[i]:.3f} wr={avg[i]:.2f} {describe(w):>14}  "
                   f"[cap {w[0]:.1f}, area {w[1]:.2f}, cov {w[2]:.2f}, spc {w[3]:.2f}, prs {w[4]:.2f}, res {w[5]:.2f}]")
-        print("(* = carries equilibrium mass — the styles worth shipping as personalities)")
+        print("(* = carries equilibrium mass; wr = win-rate vs the population — want a "
+              "spread of distinct styles all near 0.5, not one runaway)")
         return
 
     which = mode

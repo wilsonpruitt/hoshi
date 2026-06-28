@@ -562,8 +562,10 @@ if(typeof module!=='undefined') module.exports=Bot;
     return {sims:0, blunder:0};                       // Medium = clean, sharp 1-ply greedy
   }
   // Expert = the strength-run's learned weight vector, played as a FAST 1-ply bot
-  // (no MCTS = no think-time/spurts). Tuned on base-r4 with the trooper-loss penalty.
-  const EXPERT_WEIGHTS={cap:43.5, area:1.18, cov:0.48, spc:4.60, res:2.0, prs:1.08};
+  // (no MCTS = no think-time/spurts). Tuned on base-r4 WITH the trooper-loss penalty:
+  // a distinct style — spread troopers, squeeze liberties, keep a reserve, don't
+  // over-chase captures (the penalty already punishes losing your own).
+  const EXPERT_WEIGHTS={cap:18.8, area:0.80, cov:1.18, spc:4.51, res:3.09, prs:2.32};
   let botStart=0, botMinThink=0;                      // pacing so moves are watchable
   function pacedApply(mv,seq){                        // hold the move until min think-time elapses
     setTimeout(()=>applyBotMove(mv,seq), Math.max(0, botMinThink-(Date.now()-botStart)));

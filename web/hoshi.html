@@ -679,8 +679,8 @@ if(typeof module!=='undefined') module.exports=Bot;
     const watch=document.getElementById("mode").value==='cpucpu';
     const d=document.getElementById(watch&&seat===1?"diff2":"diff").value;
     if(d==='easy') return {sims:0,   blunder:0.4};   // greedy that slips often — beatable
-    if(d==='hard') return {sims:240, blunder:0};     // MCTS lookahead
-    if(d==='expert') return {sims:0, blunder:0, weights:EXPERT_WEIGHTS}; // fast 1-ply, learned eval
+    if(d==='hard') return {sims:240, blunder:0, book:true};     // MCTS lookahead + opening book
+    if(d==='expert') return {sims:0, blunder:0, weights:EXPERT_WEIGHTS, book:true}; // fast 1-ply, learned eval + book
     if(STYLE_WEIGHTS[d]) return {sims:0, blunder:0, weights:STYLE_WEIGHTS[d]}; // a personality (fast 1-ply)
     return {sims:0, blunder:0};                       // Medium = clean, sharp 1-ply greedy
   }
@@ -720,10 +720,13 @@ if(typeof module!=='undefined') module.exports=Bot;
       worker.onerror=()=>{ worker=null; };
     }catch(e){ worker=null; }
   }
-  // Opening book: precomputed strong moves for the early game, used ONLY by the
-  // MCTS (Hard) tier — the only one with think-time lag. Returns a move object or
-  // null (off-book / config mismatch → live search). Other tiers are already
-  // instant 1-ply, and we don't want the book to make Easy/Medium play stronger.
+  // Opening book: precomputed strong moves for the early game, used by the two
+  // tiers meant to be strong — Hard (MCTS) and Expert. Returns a move object or
+  // null (off-book / config mismatch → live search). Easy/Medium/personalities
+  // skip it on purpose — we don't want the book to make beatable tiers stronger.
+  // The book is built deep along the opponent's GREEDY lines too, so these tiers
+  // have a prepared answer to early aggression instead of falling off-book and
+  // playing the opening from behind (see build_opening_book.js).
   let OPENING_BOOK=null;
   function bookMove(st){
     const bk=OPENING_BOOK; if(!bk) return null;
@@ -739,9 +742,9 @@ if(typeof module!=='undefined') module.exports=Bot;
     // ambient demo plays a snappy, lively greedy (a little blunder for variety); real
     // games use the chosen tier.
     const seq=moveSeq, depthCap=s.N>=13?28:36;
-    const {sims,blunder,weights}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
+    const {sims,blunder,weights,book}= ambient ? {sims:0,blunder:0.12} : tierParams(s.toMove);
     botStart=Date.now();
-    if(!ambient && sims>0){                         // Hard tier: try the opening book first (instant)
+    if(!ambient && book){                           // Hard + Expert: try the opening book first (instant)
       const bm=bookMove(s);
       if(bm){ botMinThink=document.getElementById("mode").value==='cpucpu'?450:300; pacedApply(bm,seq); return; }
     }

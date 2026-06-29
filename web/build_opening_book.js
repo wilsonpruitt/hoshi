@@ -10,9 +10,11 @@
 // Python↔JS parity risk. Keyed by Hoshi.posKey (now exported), so the browser
 // looks up with the identical function.
 //
-// Shape: a deep principal-variation spine (best move each side, rank-weighted so
-// it survives the probability cutoff to MAX_DEPTH) with shallow shoulders (the
-// plausible top-K replies). Off-book positions fall back to live MCTS.
+// Shape: TWO deep spines kept above the probability cutoff to MAX_DEPTH — the
+// best-vs-best line AND the opponent's greedy/aggressive line (so the book has a
+// prepared answer when Medium-style attackers deviate from best-vs-best) — plus
+// shallow eval shoulders (other plausible top-K replies). Off-book positions fall
+// back to live MCTS.
 //
 // Usage:
 //   node web/build_opening_book.js                 # full run (all det. variants)
@@ -36,16 +38,22 @@ const Bot = mod.exports;
 const SIMS      = +(process.env.SIMS      || 400);   // MCTS sims per stored answer (offline → can exceed live 240)
 const MAX_DEPTH = +(process.env.MAX_DEPTH || 10);    // plies of book depth
 const K         = +(process.env.K         || 4);     // continuations expanded per node
-const EPS       = +(process.env.EPS       || 0.008); // stop expanding a line below this reach-probability
+const EPS       = +(process.env.EPS       || 0.0015);// stop expanding a line below this reach-probability
+                                                     // (low enough that the greedy spine, W_GREEDY share,
+                                                     //  survives ~7 plies — see continuations() below)
 const WIDTH     = +(process.env.WIDTH     || 8);     // MCTS shortlist width
 const BOARD     = +(process.env.BOARD     || 9);
 const OUT       = process.env.OUT || path.join(__dirname, 'opening-book.json');
 // fog is excluded: its setup is RNG-scattered per game, so no fixed opening exists.
 const VARIANTS  = (process.env.VARIANTS || 'beachhead,vanguard,garrison,bastion').split(',');
 const depthCap  = BOARD >= 13 ? 28 : 36;
-// rank-based weights: principal line keeps ~0.55 so 0.55^d stays above EPS deep;
-// shoulders decay fast. Padded/renormalized to the actual candidate count.
-const RANK_W = [0.55, 0.25, 0.12, 0.08];
+// Continuation weights. We keep TWO lines near-principal so each survives the EPS
+// gate to depth: the MCTS best move (our own book line) AND the opponent's GREEDY
+// move — the aggressive reply that Medium and human attackers actually play, and
+// the line the old book never went deep on (so Hard fell off-book by ply 4-10 and
+// played the early game from behind). Eval shoulders decay fast for breadth near
+// the top. Renormalized to the actual candidate set in expand().
+const W_BEST = 0.50, W_GREEDY = 0.40, W_SHOULDER = 0.05;
 
 function encode(m){
   if (m.type === 'trooper') return 't' + m.i;
@@ -53,10 +61,11 @@ function encode(m){
   return 'p'; // pass (mobile off → no 'move')
 }
 
-// the plausible continuations to branch into. RANK 0 IS THE STORED BEST MOVE so
-// the principal line follows the book's own recommendation deep (best-vs-best);
-// the rest are the bot's eval-ranked shoulders (likely opponent deviations).
-function continuations(s, best, k){
+// The continuations to branch into, each with its weight. The MCTS best move (our
+// book line) and the opponent's greedy move (aggression) are BOTH kept near-
+// principal so their lines reach MAX_DEPTH; the rest are eval-ranked shoulders
+// (other plausible deviations) that decay fast. Returns parallel {cands, w} arrays.
+function continuations(s, best, greedy, k){
   const me = s.toMove, scored = [];
   for (const m of H.legalMoves(s)){
     if (m.type === 'pass') continue;            // never branch the book through a pass
@@ -64,13 +73,17 @@ function continuations(s, best, k){
     scored.push([Bot.evaluate(ns, me), m]);
   }
   scored.sort((a, b) => b[0] - a[0]);           // descending: best first
-  const bc = encode(best);
-  const out = (best.type === 'pass') ? [] : [best];
+  const bc = encode(best), gc = encode(greedy);
+  const cands = [], w = [];
+  if (best.type !== 'pass'){ cands.push(best); w.push(W_BEST); }
+  if (greedy.type !== 'pass' && gc !== bc){ cands.push(greedy); w.push(W_GREEDY); } // aggression spine
   for (const [, m] of scored){
-    if (out.length >= k) break;
-    if (encode(m) !== bc) out.push(m);          // skip the dup of best
+    if (cands.length >= k) break;
+    const e = encode(m);
+    if (e === bc || e === gc) continue;         // skip dups of best / greedy
+    cands.push(m); w.push(W_SHOULDER);
   }
-  return out;
+  return { cands, w };
 }
 
 const book = {};
@@ -84,12 +97,12 @@ function expand(s, prob, depth){
   book[key] = encode(best);
   nodes++;
   if (nodes % 50 === 0) process.stdout.write(`\r  ${nodes} nodes, ${Math.round((Date.now()-t0)/1000)}s`);
-  const cands = continuations(s, best, K);
+  const greedy = Bot.botMove(s, 0);             // the aggressive 1-ply reply to also prepare deep for
+  const { cands, w } = continuations(s, best, greedy, K);
   if (!cands.length) return;
-  const wsum = cands.reduce((a, _c, i) => a + (RANK_W[i] || 0.04), 0);
+  const wsum = w.reduce((a, x) => a + x, 0);
   cands.forEach((m, i) => {
-    const share = (RANK_W[i] || 0.04) / wsum;
-    expand(H.apply(s, m), prob * share, depth + 1);
+    expand(H.apply(s, m), prob * (w[i] / wsum), depth + 1);
   });
 }
 
